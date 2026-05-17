@@ -1,0 +1,14 @@
+name = "twok-lab-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Public, non-secret config. Override at deploy time with:
+#   wrangler deploy --var ALLOWED_ORIGIN:"https://your-domain.example"
+# To allow multiple origins, use a comma-separated list:
+#   ALLOWED_ORIGIN = "https://a.example,https://b.example"
+[vars]
+ALLOWED_ORIGIN = "https://fivetran-jasonchletsos.github.io"
+
+# The ANTHROPIC_API_KEY value is a SECRET — set it with:
+#   npx wrangler@latest secret put ANTHROPIC_API_KEY
+# Do NOT put it in this file.

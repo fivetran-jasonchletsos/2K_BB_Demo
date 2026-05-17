@@ -13,6 +13,7 @@
 //
 // Storage cache key: 2klab.coach.weeklyPlan
 
+import { aiCall, loadProxyUrl } from "./ai";
 import type { CoachSnapshot } from "./coach";
 
 // ---------- Public types --------------------------------------------------
@@ -297,7 +298,11 @@ export async function generateWeeklyPlan(
   req: WeeklyPlanRequest,
   opts: GenerateOpts,
 ): Promise<WeeklyPlanResponse> {
-  if (!opts.apiKey) {
+  // Need EITHER a configured Worker proxy OR a direct browser key. The
+  // proxy URL is read from localStorage on each call (so we don't cache a
+  // stale value across /connect edits).
+  const hasProxy = !!loadProxyUrl();
+  if (!hasProxy && !opts.apiKey) {
     throw new AgentError("No API key set", "");
   }
   opts.onEvent?.({ type: "reading" });
@@ -306,36 +311,17 @@ export async function generateWeeklyPlan(
 
   opts.onEvent?.({ type: "calling", model: COACH_AGENT_MODEL });
 
-  // Dynamic import keeps the SDK out of the initial bundle and makes static
-  // type-check work even before `npm install` finishes.
-  const mod = await import("@anthropic-ai/sdk");
-  // The SDK ships as a default export; older shapes export `.Anthropic`.
-  const AnthropicCtor =
-    (mod as { default?: unknown }).default ??
-    (mod as { Anthropic?: unknown }).Anthropic ??
-    mod;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Anthropic = AnthropicCtor as new (cfg: any) => any;
-  const client = new Anthropic({
-    apiKey: opts.apiKey,
-    dangerouslyAllowBrowser: true,
-  });
-
   let rawText = "";
   try {
-    const resp = await client.messages.create({
+    const { text } = await aiCall({
       model: COACH_AGENT_MODEL,
-      max_tokens: 2000,
+      maxTokens: 2000,
       system: COACH_AGENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPayload }],
+      stream: false,
+      apiKey: opts.apiKey,
     });
-
-    type ContentBlock = { type: string; text?: string };
-    const blocks = (resp?.content ?? []) as ContentBlock[];
-    rawText = blocks
-      .filter((b) => b.type === "text")
-      .map((b) => b.text ?? "")
-      .join("");
+    rawText = text;
   } catch (err) {
     throw new AgentError(
       (err as { message?: string })?.message ?? "API call failed",

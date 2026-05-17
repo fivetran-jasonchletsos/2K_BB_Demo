@@ -13,12 +13,13 @@ import {
 import {
   AI_MODEL,
   DEFAULT_SYSTEM_PROMPT,
+  aiCall,
   buildFullSystemPrompt,
   clearHistory,
-  loadApiKey,
   loadCustomSystemPrompt,
   loadHistory,
   loadPersonalization,
+  loadProxyUrl,
   saveCustomSystemPrompt,
   saveHistory,
   type ChatMessage,
@@ -77,7 +78,10 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
     async (raw: string) => {
       const text = raw.trim();
       if (!text || pending) return;
-      if (!apiKey) {
+      // We require EITHER a configured proxy URL OR an in-browser API
+      // key. If neither is set, kick the user to /connect.
+      const proxyUrl = loadProxyUrl();
+      if (!proxyUrl && !apiKey) {
         onMissingKey();
         return;
       }
@@ -97,51 +101,44 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
         loadPersonalization(),
       );
 
+      // Anthropic format requires alternating user/assistant turns.
+      const apiMessages = nextHistory.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      let finalText = "";
+
       try {
-        // Dynamic import ships zero SDK code into the initial bundle.
-        const mod = await import("@anthropic-ai/sdk");
-        const Anthropic = mod.default ?? mod.Anthropic ?? mod;
-        const client = new Anthropic({
-          apiKey,
-          dangerouslyAllowBrowser: true,
-        });
-
-        // Anthropic format requires alternating user/assistant turns.
-        const apiMessages = nextHistory.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-        let finalText = "";
-
         // Try streaming first; fall back to non-streaming on failure.
+        // `aiCall` picks Worker-proxy vs. direct-SDK based on whether a
+        // proxy URL is configured in localStorage.
         try {
-          const stream = client.messages.stream({
+          const { text: streamed } = await aiCall({
             model: AI_MODEL,
-            max_tokens: 1024,
+            maxTokens: 1024,
             system: fullSystem,
             messages: apiMessages,
+            stream: true,
+            apiKey,
+            onDelta: (delta) => {
+              finalText += delta;
+              setStreamingText(finalText);
+            },
           });
-
-          stream.on("text", (delta: string) => {
-            finalText += delta;
-            setStreamingText(finalText);
-          });
-
-          await stream.finalMessage();
+          // `aiCall` already accumulates internally; prefer its return
+          // value in case onDelta missed any trailing flush.
+          if (streamed) finalText = streamed;
         } catch (streamErr) {
-          // Fallback: non-streaming.
-          const resp = await client.messages.create({
+          const { text: oneshot } = await aiCall({
             model: AI_MODEL,
-            max_tokens: 1024,
+            maxTokens: 1024,
             system: fullSystem,
             messages: apiMessages,
+            stream: false,
+            apiKey,
           });
-          finalText =
-            ((resp?.content || []) as Array<{ type: string; text?: string }>)
-              .filter((b) => b.type === "text")
-              .map((b) => b.text ?? "")
-              .join("") || "";
+          finalText = oneshot;
           if (!finalText) throw streamErr;
         }
 

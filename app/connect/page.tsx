@@ -7,8 +7,11 @@ import {
   AI_KEYS,
   AI_MODEL,
   clearApiKey as clearAnthropicKey,
+  clearProxyUrl,
   loadApiKey as loadAnthropicKey,
+  loadProxyUrl,
   saveApiKey as saveAnthropicKey,
+  saveProxyUrl,
 } from "@/lib/ai";
 import {
   BDL_KEY_STORAGE,
@@ -56,6 +59,12 @@ function TestResultLine({ state }: { state: TestState }) {
 export default function ConnectPage() {
   const [hydrated, setHydrated] = useState(false);
 
+  // Worker proxy
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxySaved, setProxySaved] = useState(false);
+  const [proxyTest, setProxyTest] = useState<TestState>({ kind: "idle" });
+  const [proxyAutoPill, setProxyAutoPill] = useState(false);
+
   // Anthropic
   const [anthKey, setAnthKey] = useState("");
   const [anthSaved, setAnthSaved] = useState(false);
@@ -71,8 +80,11 @@ export default function ConnectPage() {
   const [bdlAutoPill, setBdlAutoPill] = useState(false);
 
   useEffect(() => {
+    const px = loadProxyUrl() ?? "";
     const ak = loadAnthropicKey();
     const bk = loadBdlKey();
+    setProxyUrl(px);
+    setProxySaved(!!px);
     setAnthKey(ak);
     setBdlKey(bk);
     setAnthSaved(!!ak);
@@ -82,6 +94,54 @@ export default function ConnectPage() {
 
   if (!hydrated) {
     return <div className="space-y-10" aria-hidden />;
+  }
+
+  // ---- Worker proxy handlers ----
+
+  function handleSaveProxy() {
+    saveProxyUrl(proxyUrl);
+    const persisted = loadProxyUrl() ?? "";
+    setProxyUrl(persisted);
+    setProxySaved(!!persisted);
+    setProxyTest({ kind: "idle" });
+  }
+  function handleBlurProxy() {
+    const v = proxyUrl.trim();
+    if (!v) return;
+    saveProxyUrl(v);
+    const persisted = loadProxyUrl() ?? "";
+    setProxyUrl(persisted);
+    setProxySaved(true);
+    setProxyAutoPill(true);
+    setTimeout(() => setProxyAutoPill(false), 2000);
+  }
+  function handleClearProxy() {
+    clearProxyUrl();
+    setProxyUrl("");
+    setProxySaved(false);
+    setProxyTest({ kind: "idle" });
+  }
+  async function handleTestProxy() {
+    const v = proxyUrl.trim().replace(/\/+$/, "");
+    if (!v) {
+      setProxyTest({ kind: "err", detail: "no URL entered" });
+      return;
+    }
+    setProxyTest({ kind: "running" });
+    try {
+      const res = await fetch(`${v}/health`, { method: "GET" });
+      if (res.ok) {
+        const body = (await res.text()).trim().slice(0, 16);
+        setProxyTest({ kind: "ok", detail: body || "200" });
+      } else {
+        setProxyTest({ kind: "err", detail: `${res.status}` });
+      }
+    } catch (e) {
+      setProxyTest({
+        kind: "err",
+        detail: e instanceof Error ? e.message : "network error",
+      });
+    }
   }
 
   // ---- Anthropic handlers ----
@@ -201,6 +261,88 @@ export default function ConnectPage() {
           to call the respective APIs directly.
         </p>
       </header>
+
+      <Section
+        title="Worker proxy URL (recommended)"
+        subtitle="Route Claude calls through a Cloudflare Worker — avoids browser CORS, keeps API key server-side"
+      >
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-muted">
+              <span>status</span>
+              <StatusPill connected={proxySaved} />
+              <span className="text-ink">cloudflare worker</span>
+            </div>
+            <div className="font-mono text-[10px] text-muted">
+              storage key: <span className="text-ink">{AI_KEYS.proxyUrl}</span>
+            </div>
+          </div>
+
+          <p className="mt-3 text-xs text-muted">
+            If set, the site uses the Worker proxy instead of calling
+            Anthropic directly. Avoids browser CORS, keeps the API key
+            server-side. Deploy with{" "}
+            <code className="rounded bg-surface2 px-1 font-mono text-[11px] text-ink">
+              cd proxy &amp;&amp; wrangler deploy
+            </code>{" "}
+            — see <span className="text-ink">proxy/README.md</span>.
+          </p>
+
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-muted">
+            Order of precedence: Worker proxy &gt; direct Anthropic call
+            with browser key.
+          </p>
+
+          <label className="mt-4 block font-mono text-[10px] uppercase tracking-wider text-muted">
+            Worker URL
+          </label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.target.value)}
+              onBlur={handleBlurProxy}
+              placeholder="https://twok-lab-proxy.your-sub.workers.dev"
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-line bg-surface2 px-3 py-2 font-mono text-sm text-ink placeholder:text-muted focus:border-ice focus:outline-none"
+            />
+            {proxyAutoPill && (
+              <Pill tone="lime" className="!text-[10px]">
+                saved
+              </Pill>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveProxy}
+              className="rounded-md border border-lime/60 bg-lime/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-lime hover:bg-lime/20"
+            >
+              save
+            </button>
+            <button
+              type="button"
+              onClick={handleTestProxy}
+              className="rounded-md border border-ice/60 bg-ice/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-ice hover:bg-ice/20"
+            >
+              test connection
+            </button>
+            <button
+              type="button"
+              onClick={handleClearProxy}
+              disabled={!proxySaved && !proxyUrl}
+              className="rounded-md border border-line bg-surface2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-flame hover:text-ink disabled:opacity-40"
+            >
+              clear
+            </button>
+            <div className="ml-auto">
+              <TestResultLine state={proxyTest} />
+            </div>
+          </div>
+        </Card>
+      </Section>
 
       <Section title="Anthropic" subtitle="Powers the /ai agent (Claude)">
         <Card>

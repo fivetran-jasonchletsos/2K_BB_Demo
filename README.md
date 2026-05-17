@@ -104,9 +104,36 @@ catalog if needed — no re-ingest.
 - **Transformation** — dbt on Snowflake-on-Iceberg (Athena alternative profile retained)
 - **Frontend** — Next.js 14 (App Router) · TypeScript · Tailwind, static export
 - **Deploy** — GitHub Pages via `.github/workflows/deploy.yml`
+- **AI backend** — optional Cloudflare Worker in `proxy/` that holds the
+  Anthropic API key as a CF secret and forwards `POST /v1/messages`. The
+  static site calls the Worker; the Worker calls Anthropic. Avoids the
+  browser-CORS gate and keeps the key off the device. See **Production:
+  deploy the Worker** below.
 - **Demo data** — pre-built JSON snapshots in `public/data/`; the same
   pipeline runs live when MDLS + an engine are configured
 - localStorage for personal state (saved builds, redeemed codes, tier list
   overrides, scenario progress, favorite tips/moves/combos)
 - No third-party UI libraries; primitives in `components/ui.tsx`
 - Scaffolded with Claude Code in 9 parallel agents
+
+### Production: deploy the Worker
+
+The site can call Claude two ways: a Worker proxy (preferred — no CORS,
+no key in the browser) or a direct browser call with a per-device API
+key. To stand up the Worker:
+
+```bash
+cd proxy
+npx wrangler@latest login
+npx wrangler@latest secret put ANTHROPIC_API_KEY
+npx wrangler@latest deploy
+```
+
+The deploy command prints a URL like
+`https://twok-lab-proxy.<your-sub>.workers.dev`. Paste that into the
+**Worker proxy URL** card on the site's `/connect` page. From then on
+the site routes Claude requests through the Worker and ignores any
+in-browser Anthropic key.
+
+Full details, custom-domain setup, and local-dev instructions live in
+[`proxy/README.md`](proxy/README.md).
