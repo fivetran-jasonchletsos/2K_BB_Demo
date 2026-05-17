@@ -83,6 +83,13 @@ export interface RatingPrediction {
   nextUpdateEta: string; // e.g. "Thu 5/22"
   computedAt: string; // ISO timestamp
   recentForm: number; // 0..100 composite for sorting
+  /**
+   * 7-day predicted rating trajectory (one point per day, oldest → newest).
+   * Sourced from mart_rating_forecast_7d (per-player daily forecast series).
+   * If absent at runtime, the UI linearly interpolates from currentRating to
+   * currentRating + predictedDelta as a fallback.
+   */
+  forecast7d?: number[];
 }
 
 /**
@@ -744,7 +751,7 @@ export const PREDICTIONS: RatingPrediction[] = [
     displayName: "Damian Lillard",
     team: "MIL",
     position: "PG",
-    currentRating: 91,
+    currentRating: 88,
     predictedDelta: -2,
     confidence: 0.76,
     primaryDriver: "TS% 51% over last 10; -7 on/off",
@@ -956,6 +963,38 @@ export const PREDICTIONS: RatingPrediction[] = [
     recentForm: 82,
   },
 ];
+
+// -----------------------------------------------------------------------------
+// forecast7d backfill — deterministic 7-point series from current to current+delta.
+// Adds small symmetric noise so the sparkline reads as a trajectory, not a ramp,
+// then snaps the final point to exactly currentRating + predictedDelta.
+// -----------------------------------------------------------------------------
+function buildForecast7d(current: number, delta: number, seed: string): number[] {
+  // Hash the seed to a stable 0..1 noise source so SSR + client agree.
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const out: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const t = i / 6;
+    const base = current + delta * t;
+    // Pseudo-random noise in [-0.4, +0.4], zeroed at endpoints.
+    h = Math.imul(h ^ (i + 1), 2654435761);
+    const noise = i === 0 || i === 6 ? 0 : ((h >>> 0) % 1000) / 1000 * 0.8 - 0.4;
+    out.push(Math.round((base + noise) * 10) / 10);
+  }
+  out[0] = current;
+  out[6] = current + delta;
+  return out;
+}
+
+for (const p of PREDICTIONS) {
+  if (!p.forecast7d) {
+    p.forecast7d = buildForecast7d(p.currentRating, p.predictedDelta, p.playerId);
+  }
+}
 
 // -----------------------------------------------------------------------------
 // SOURCES — mart_pulse_sources

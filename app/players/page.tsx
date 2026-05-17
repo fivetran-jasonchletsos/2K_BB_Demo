@@ -1,16 +1,60 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   PLAYERS,
   TEAMS,
   ARCHETYPE_LABELS,
   searchPlayers,
+  computeMatchup,
+  getPlayer,
   type Player,
   type Position,
+  type MatchupResult,
 } from "@/lib/players";
 import { Card, Pill, Stat, TierBadge, Bar } from "@/components/ui";
+
+type Mode = "browse" | "matchup";
+
+type SavedMatchup = { a: string; b: string; savedAt: number };
+
+const MATCHUPS_KEY = "2klab.matchups";
+
+function loadSavedMatchups(): SavedMatchup[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MATCHUPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is SavedMatchup =>
+        m &&
+        typeof m.a === "string" &&
+        typeof m.b === "string" &&
+        typeof m.savedAt === "number"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveMatchupPair(aId: string, bId: string) {
+  if (typeof window === "undefined") return;
+  const cur = loadSavedMatchups();
+  // Dedupe by ordered pair.
+  const filtered = cur.filter((m) => !(m.a === aId && m.b === bId));
+  const next: SavedMatchup[] = [
+    { a: aId, b: bId, savedAt: Date.now() },
+    ...filtered,
+  ].slice(0, 8);
+  try {
+    window.localStorage.setItem(MATCHUPS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore quota errors
+  }
+}
 
 type PosFilter = "All" | "G" | "F" | "C";
 type SortKey = "rating" | "name" | "form";
@@ -499,9 +543,606 @@ function CompareDrawer({
   );
 }
 
+// ---------- Player Picker Modal (for Matchup slots) ----------
+
+function PlayerPickerModal({
+  open,
+  slot,
+  excludeId,
+  onPick,
+  onClose,
+}: {
+  open: boolean;
+  slot: "A" | "B";
+  excludeId?: string;
+  onPick: (p: Player) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [pos, setPos] = useState<PosFilter>("All");
+
+  const list = useMemo(() => {
+    let l = q ? searchPlayers(q) : PLAYERS;
+    l = l.filter((p) => POS_GROUPS[pos](p.position));
+    if (excludeId) l = l.filter((p) => p.id !== excludeId);
+    return [...l].sort((a, b) => b.rating2k - a.rating2k).slice(0, 60);
+  }, [q, pos, excludeId]);
+
+  // Reset query when modal opens.
+  useEffect(() => {
+    if (open) {
+      setQ("");
+      setPos("All");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4">
+      <div className="flex h-[88vh] w-full max-w-2xl flex-col rounded-t-2xl border border-line bg-surface shadow-card md:h-[78vh] md:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-line p-3">
+          <div className="font-display text-xl tracking-wide text-ink">
+            Pick Player {slot}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md border border-line bg-surface2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-ink"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2 border-b border-line p-3">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search players (e.g. tatum, sga, wemby)"
+            className="w-full rounded-lg border border-line bg-surface2 px-3 py-2 font-mono text-sm text-ink placeholder:text-muted focus:border-flame focus:outline-none"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              Pos
+            </span>
+            {(["All", "G", "F", "C"] as PosFilter[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPos(p)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wider ${
+                  pos === p
+                    ? "border-flame bg-flame/10 text-flame"
+                    : "border-line bg-surface2 text-muted hover:text-ink"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {list.length === 0 ? (
+            <div className="p-6 text-center text-xs text-muted">
+              No matches. Loosen the filter.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {list.map((p) => {
+                const t = TEAMS[p.team];
+                const tc = t?.primary ?? "#26262F";
+                return (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => onPick(p)}
+                      className="flex w-full items-center gap-3 rounded-lg border border-line bg-surface2 px-2 py-2 text-left hover:border-flame/40"
+                    >
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md font-display text-sm"
+                        style={{ background: tc, color: readableTextOn(tc) }}
+                      >
+                        {initials(p.displayName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-display text-base tracking-wide text-ink">
+                          {p.displayName}
+                        </div>
+                        <div className="text-[10px] text-muted">
+                          {t?.abbr} · {p.position} · {p.height}
+                        </div>
+                      </div>
+                      <div className="font-mono text-lg font-bold text-ink">
+                        {p.rating2k}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Matchup View ----------
+
+function MatchupSlot({
+  slot,
+  player,
+  onOpen,
+  onClear,
+}: {
+  slot: "A" | "B";
+  player: Player | null;
+  onOpen: () => void;
+  onClear: () => void;
+}) {
+  if (!player) {
+    return (
+      <button
+        onClick={onOpen}
+        className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-surface2 p-6 text-center transition-colors hover:border-flame/40"
+      >
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface font-display text-2xl text-muted">
+          {slot}
+        </div>
+        <div className="font-display text-lg text-ink">Pick Player {slot}</div>
+        <div className="text-[11px] text-muted">Tap to search</div>
+      </button>
+    );
+  }
+  const t = TEAMS[player.team];
+  const tc = t?.primary ?? "#26262F";
+  return (
+    <div className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface2 p-3">
+      <div
+        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl font-display text-xl"
+        style={{ background: tc, color: readableTextOn(tc) }}
+      >
+        {initials(player.displayName)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+          Player {slot}
+        </div>
+        <div className="truncate font-display text-xl leading-tight tracking-wide text-ink">
+          {player.displayName}
+        </div>
+        <div className="text-[11px] text-muted">
+          {t?.abbr} · {player.position} · {player.rating2k} OVR
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col gap-1">
+        <button
+          onClick={onOpen}
+          className="rounded-md border border-line bg-surface px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink hover:border-ice/40"
+        >
+          Swap
+        </button>
+        <button
+          onClick={onClear}
+          className="rounded-md border border-line bg-surface px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-flame hover:bg-flame/10"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AttrBarRow({
+  label,
+  aVal,
+  bVal,
+}: {
+  label: string;
+  aVal: number;
+  bVal: number;
+}) {
+  const lead: "A" | "B" | "EVEN" =
+    aVal === bVal ? "EVEN" : aVal > bVal ? "A" : "B";
+  const aTone: "lime" | "flame" | "ice" =
+    lead === "A" ? "lime" : lead === "B" ? "flame" : "ice";
+  const bTone: "lime" | "flame" | "ice" =
+    lead === "B" ? "lime" : lead === "A" ? "flame" : "ice";
+  return (
+    <div className="grid grid-cols-[2.25rem_1fr_3rem_1fr_2.25rem] items-center gap-2">
+      <div
+        className={`text-right font-mono text-xs ${
+          lead === "A" ? "font-bold text-lime" : "text-ink"
+        }`}
+      >
+        {aVal}
+      </div>
+      <div className="flex justify-end">
+        <div className="w-full max-w-[140px] rotate-180">
+          <Bar value={aVal} tone={aTone} />
+        </div>
+      </div>
+      <div className="text-center text-[10px] font-bold uppercase tracking-wider text-muted">
+        {label}
+      </div>
+      <div className="w-full max-w-[140px]">
+        <Bar value={bVal} tone={bTone} />
+      </div>
+      <div
+        className={`text-left font-mono text-xs ${
+          lead === "B" ? "font-bold text-lime" : "text-ink"
+        }`}
+      >
+        {bVal}
+      </div>
+    </div>
+  );
+}
+
+function MatchupView({
+  result,
+  onSave,
+}: {
+  result: MatchupResult;
+  onSave: () => void;
+}) {
+  const { a, b, ovrDelta, rows, edges, isoAdvantage, formDelta, badges } =
+    result;
+  const aTeam = TEAMS[a.team];
+  const bTeam = TEAMS[b.team];
+  const aColor = aTeam?.primary ?? "#26262F";
+  const bColor = bTeam?.primary ?? "#26262F";
+
+  const ovrTone =
+    ovrDelta > 0 ? "text-lime" : ovrDelta < 0 ? "text-flame" : "text-muted";
+  const isoLabel =
+    isoAdvantage.side === "EVEN"
+      ? `Even ISO · ${isoAdvantage.pctA}% / ${100 - isoAdvantage.pctA}%`
+      : `${isoAdvantage.side === "A" ? a.lastName : b.lastName} edge ${
+          isoAdvantage.side === "A"
+            ? isoAdvantage.pctA
+            : 100 - isoAdvantage.pctA
+        }%`;
+
+  const edgeSummary = edges
+    .map((e) => {
+      if (e.winner === "EVEN") return `Even ${e.dimension}`;
+      const name = e.winner === "A" ? a.lastName : b.lastName;
+      return `${name} wins ${e.dimension} +${Math.abs(e.delta)}`;
+    })
+    .join(" · ");
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* VS row */}
+      <Card className="flex flex-col gap-3">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-display text-base md:h-12 md:w-12 md:text-lg"
+              style={{ background: aColor, color: readableTextOn(aColor) }}
+            >
+              {initials(a.displayName)}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate font-display text-xl tracking-wide text-ink md:text-3xl">
+                {a.displayName}
+              </div>
+              <div className="text-[10px] text-muted md:text-xs">
+                {aTeam?.abbr} · {a.position}
+              </div>
+            </div>
+          </div>
+          <div className="font-display text-2xl tracking-widest text-muted md:text-4xl">
+            VS
+          </div>
+          <div className="flex items-center justify-end gap-2 md:gap-3">
+            <div className="min-w-0 text-right">
+              <div className="truncate font-display text-xl tracking-wide text-ink md:text-3xl">
+                {b.displayName}
+              </div>
+              <div className="text-[10px] text-muted md:text-xs">
+                {bTeam?.abbr} · {b.position}
+              </div>
+            </div>
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-display text-base md:h-12 md:w-12 md:text-lg"
+              style={{ background: bColor, color: readableTextOn(bColor) }}
+            >
+              {initials(b.displayName)}
+            </div>
+          </div>
+        </div>
+
+        {/* OVR comparison */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-line pt-3">
+          <div className="text-left font-mono text-3xl font-bold text-ink md:text-4xl">
+            {a.rating2k}
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              OVR Δ
+            </div>
+            <div className={`font-display text-2xl ${ovrTone}`}>
+              {ovrDelta > 0 ? `+${ovrDelta}` : ovrDelta}
+            </div>
+          </div>
+          <div className="text-right font-mono text-3xl font-bold text-ink md:text-4xl">
+            {b.rating2k}
+          </div>
+        </div>
+
+        {/* Save / saved hint */}
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] text-muted">
+            {a.lastName} {a.rating2k} OVR · {b.lastName} {b.rating2k} OVR ·{" "}
+            {edges[0].winner === "EVEN"
+              ? "Even Scoring"
+              : `${
+                  edges[0].winner === "A" ? a.lastName : b.lastName
+                } +${Math.abs(edges[0].delta)} Scoring`}
+          </div>
+          <button
+            onClick={onSave}
+            className="rounded-md border border-line bg-surface2 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink hover:border-ice/40 hover:text-ice"
+          >
+            Save Matchup
+          </button>
+        </div>
+      </Card>
+
+      {/* Edge summary */}
+      <Card className="flex flex-col gap-2">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+          Dimension Edges
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {edges.map((e) => {
+            const tone: "lime" | "flame" | "muted" =
+              e.winner === "EVEN"
+                ? "muted"
+                : e.winner === "A"
+                ? "lime"
+                : "flame";
+            const text =
+              e.winner === "EVEN"
+                ? `Even ${e.dimension}`
+                : `${
+                    e.winner === "A" ? a.lastName : b.lastName
+                  } ${e.dimension} +${Math.abs(e.delta)}`;
+            return (
+              <Pill key={e.dimension} tone={tone}>
+                {text}
+              </Pill>
+            );
+          })}
+        </div>
+        <div className="text-[11px] leading-relaxed text-muted">
+          {edgeSummary}.
+        </div>
+      </Card>
+
+      {/* ISO prediction */}
+      <Card className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            1v1 ISO · Neutral Court
+          </div>
+          <Pill tone="ice">model</Pill>
+        </div>
+        <div className="font-display text-2xl text-ink">{isoLabel}</div>
+        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+          <div className="rounded-md border border-line bg-surface2 px-2 py-1">
+            <span className="text-muted">{a.lastName}</span>{" "}
+            <span className="font-bold text-ink">{isoAdvantage.pctA}%</span>
+          </div>
+          <div className="rounded-md border border-line bg-surface2 px-2 py-1 text-right">
+            <span className="font-bold text-ink">
+              {100 - isoAdvantage.pctA}%
+            </span>{" "}
+            <span className="text-muted">{b.lastName}</span>
+          </div>
+        </div>
+        <div className="text-[11px] leading-relaxed text-muted">
+          Weighted 50% scoring · 30% playmaking · 20% defense. Clamped 30–85%.
+        </div>
+      </Card>
+
+      {/* Attribute bars */}
+      <Card className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            Attribute Matchup
+          </div>
+          <div className="font-mono text-[10px] text-muted">
+            {a.lastName} · {b.lastName}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          {rows.map((r) => (
+            <AttrBarRow
+              key={r.key}
+              label={r.label}
+              aVal={r.a}
+              bVal={r.b}
+            />
+          ))}
+        </div>
+      </Card>
+
+      {/* Form + Last-10 */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Card className="flex flex-col gap-2">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            Recent Form Δ
+          </div>
+          <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+            <div className="rounded-md border border-line bg-surface2 p-2">
+              <div className="text-[10px] text-muted">{a.lastName}</div>
+              <DeltaTag delta={a.ratingDelta} />
+            </div>
+            <div className="rounded-md border border-line bg-surface2 p-2">
+              <div className="text-[10px] text-muted">{b.lastName}</div>
+              <DeltaTag delta={b.ratingDelta} />
+            </div>
+          </div>
+          <div className="text-[11px] text-muted">
+            Form gap{" "}
+            <span
+              className={`font-mono ${
+                formDelta > 0
+                  ? "text-lime"
+                  : formDelta < 0
+                  ? "text-flame"
+                  : "text-muted"
+              }`}
+            >
+              {formDelta > 0 ? `+${formDelta}` : formDelta}
+            </span>{" "}
+            in {a.lastName}&apos;s favor.
+          </div>
+        </Card>
+
+        <Card className="flex flex-col gap-2">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            Last-10 Averages
+          </div>
+          <table className="w-full font-mono text-[11px]">
+            <thead>
+              <tr className="text-muted">
+                <th className="py-1 text-left font-semibold">Stat</th>
+                <th className="py-1 text-right font-semibold">{a.lastName}</th>
+                <th className="py-1 text-right font-semibold">{b.lastName}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ["PPG", a.last10.ppg.toFixed(1), b.last10.ppg.toFixed(1)],
+                  ["RPG", a.last10.rpg.toFixed(1), b.last10.rpg.toFixed(1)],
+                  ["APG", a.last10.apg.toFixed(1), b.last10.apg.toFixed(1)],
+                  [
+                    "FG%",
+                    (a.last10.fgPct * 100).toFixed(1),
+                    (b.last10.fgPct * 100).toFixed(1),
+                  ],
+                  [
+                    "3P%",
+                    (a.last10.threePct * 100).toFixed(1),
+                    (b.last10.threePct * 100).toFixed(1),
+                  ],
+                  [
+                    "+/-",
+                    a.last10.plusMinus > 0
+                      ? `+${a.last10.plusMinus.toFixed(1)}`
+                      : a.last10.plusMinus.toFixed(1),
+                    b.last10.plusMinus > 0
+                      ? `+${b.last10.plusMinus.toFixed(1)}`
+                      : b.last10.plusMinus.toFixed(1),
+                  ],
+                ] as [string, string, string][]
+              ).map(([label, av, bv]) => {
+                const an = parseFloat(av);
+                const bn = parseFloat(bv);
+                const aw = !isNaN(an) && !isNaN(bn) && an > bn;
+                const bw = !isNaN(an) && !isNaN(bn) && bn > an;
+                return (
+                  <tr key={label} className="border-t border-line text-ink">
+                    <td className="py-1 text-left text-muted">{label}</td>
+                    <td
+                      className={`py-1 text-right ${
+                        aw ? "font-bold text-lime" : ""
+                      }`}
+                    >
+                      {av}
+                    </td>
+                    <td
+                      className={`py-1 text-right ${
+                        bw ? "font-bold text-lime" : ""
+                      }`}
+                    >
+                      {bv}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+
+      {/* Badges overlap */}
+      <Card className="flex flex-col gap-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+          S/A Badges
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-ink">
+              Shared ({badges.shared.length})
+            </div>
+            {badges.shared.length === 0 ? (
+              <div className="text-[11px] text-muted">No overlap.</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {badges.shared.map((bd) => (
+                  <Pill
+                    key={`s-${bd.name}`}
+                    tone={bd.tier === "S" ? "gold" : "flame"}
+                  >
+                    {bd.tier} · {bd.name}
+                  </Pill>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-ink">
+              {a.lastName} only ({badges.onlyA.length})
+            </div>
+            {badges.onlyA.length === 0 ? (
+              <div className="text-[11px] text-muted">—</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {badges.onlyA.map((bd) => (
+                  <Pill
+                    key={`a-${bd.name}`}
+                    tone={bd.tier === "S" ? "gold" : "flame"}
+                  >
+                    {bd.tier} · {bd.name}
+                  </Pill>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-ink">
+              {b.lastName} only ({badges.onlyB.length})
+            </div>
+            {badges.onlyB.length === 0 ? (
+              <div className="text-[11px] text-muted">—</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {badges.onlyB.map((bd) => (
+                  <Pill
+                    key={`b-${bd.name}`}
+                    tone={bd.tier === "S" ? "gold" : "flame"}
+                  >
+                    {bd.tier} · {bd.name}
+                  </Pill>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- Page ----------
 
 export default function PlayersPage() {
+  const [mode, setMode] = useState<Mode>("browse");
   const [search, setSearch] = useState("");
   const [pos, setPos] = useState<PosFilter>("All");
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
@@ -511,6 +1152,34 @@ export default function PlayersPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Matchup state
+  const [matchupA, setMatchupA] = useState<Player | null>(null);
+  const [matchupB, setMatchupB] = useState<Player | null>(null);
+  const [pickerSlot, setPickerSlot] = useState<"A" | "B" | null>(null);
+  const [savedMatchups, setSavedMatchups] = useState<SavedMatchup[]>([]);
+
+  useEffect(() => {
+    setSavedMatchups(loadSavedMatchups());
+  }, []);
+
+  const matchupResult: MatchupResult | null = useMemo(() => {
+    if (!matchupA || !matchupB) return null;
+    return computeMatchup(matchupA, matchupB);
+  }, [matchupA, matchupB]);
+
+  const handleSaveMatchup = () => {
+    if (!matchupA || !matchupB) return;
+    saveMatchupPair(matchupA.id, matchupB.id);
+    setSavedMatchups(loadSavedMatchups());
+  };
+
+  const handlePickRecent = (m: SavedMatchup) => {
+    const pa = getPlayer(m.a);
+    const pb = getPlayer(m.b);
+    if (pa) setMatchupA(pa);
+    if (pb) setMatchupB(pb);
+  };
 
   const filtered = useMemo(() => {
     let list = search ? searchPlayers(search) : PLAYERS;
@@ -574,6 +1243,87 @@ export default function PlayersPage() {
           </p>
         </header>
 
+        {/* Mode tabs */}
+        <div className="mb-6 inline-flex rounded-lg border border-line bg-surface2 p-1">
+          {(
+            [
+              { id: "browse", label: "Browse" },
+              { id: "matchup", label: "Matchup" },
+            ] as { id: Mode; label: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setMode(tab.id)}
+              className={`rounded-md px-4 py-1.5 text-xs font-semibold uppercase tracking-wider ${
+                mode === tab.id
+                  ? "bg-flame/15 text-flame"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "matchup" ? (
+          <div className="flex flex-col gap-4">
+            {/* Slots */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <MatchupSlot
+                slot="A"
+                player={matchupA}
+                onOpen={() => setPickerSlot("A")}
+                onClear={() => setMatchupA(null)}
+              />
+              <MatchupSlot
+                slot="B"
+                player={matchupB}
+                onOpen={() => setPickerSlot("B")}
+                onClear={() => setMatchupB(null)}
+              />
+            </div>
+
+            {/* Recent saved matchups */}
+            {savedMatchups.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Recent
+                </span>
+                {savedMatchups.map((m) => {
+                  const pa = getPlayer(m.a);
+                  const pb = getPlayer(m.b);
+                  if (!pa || !pb) return null;
+                  return (
+                    <button
+                      key={`${m.a}-${m.b}-${m.savedAt}`}
+                      onClick={() => handlePickRecent(m)}
+                      className="rounded-full border border-line bg-surface2 px-3 py-1 text-[11px] font-semibold tracking-wide text-ink hover:border-ice/40 hover:text-ice"
+                    >
+                      {pa.lastName} vs {pb.lastName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {matchupResult ? (
+              <MatchupView
+                result={matchupResult}
+                onSave={handleSaveMatchup}
+              />
+            ) : (
+              <Card className="text-center text-sm text-muted">
+                Pick two players to run the matchup model.
+              </Card>
+            )}
+
+            <p className="mt-6 text-[11px] leading-relaxed text-muted">
+              Matchup model: 50% scoring · 30% playmaking · 20% defense, clamped 30–85%.
+              Saved locally in your browser only.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Stat row */}
         <div className="mb-6 grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
           <Stat label="Players Tracked" value={stats.total} />
@@ -762,16 +1512,25 @@ export default function PlayersPage() {
           </div>
         )}
 
-        {/* Disclaimer */}
+        {/* Attribution */}
         <p className="mt-10 text-[11px] leading-relaxed text-muted">
+          2K26 ratings sourced from community ratings sites + the Pulse
+          prediction model. These are approximations and refresh weekly —
+          verify against the game before lineup decisions.
+        </p>
+
+        {/* Disclaimer */}
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
           Stats are 2026 season approximations. Data shape mirrors what
           Fivetran connectors deliver to Snowflake (balldontlie, nba_stats).
           Ratings update weekly; deltas reflect the last patch cycle.
         </p>
+          </>
+        )}
       </div>
 
-      {/* Compare drawer */}
-      {drawerOpen && compared.length > 0 && (
+      {/* Compare drawer (browse mode only) */}
+      {mode === "browse" && drawerOpen && compared.length > 0 && (
         <CompareDrawer
           players={compared}
           onClose={() => setDrawerOpen(false)}
@@ -780,6 +1539,21 @@ export default function PlayersPage() {
           }
         />
       )}
+
+      {/* Player picker for matchup */}
+      <PlayerPickerModal
+        open={pickerSlot !== null}
+        slot={pickerSlot ?? "A"}
+        excludeId={
+          pickerSlot === "A" ? matchupB?.id : matchupA?.id
+        }
+        onPick={(p) => {
+          if (pickerSlot === "A") setMatchupA(p);
+          else if (pickerSlot === "B") setMatchupB(p);
+          setPickerSlot(null);
+        }}
+        onClose={() => setPickerSlot(null)}
+      />
     </main>
   );
 }

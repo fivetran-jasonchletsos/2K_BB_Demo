@@ -81,7 +81,7 @@ export default function CodesPage() {
   const [query, setQuery] = useState("");
   const [hideRedeemed, setHideRedeemed] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [copiedAllCount, setCopiedAllCount] = useState<number | null>(null);
 
   // Live tick
   useEffect(() => {
@@ -126,6 +126,20 @@ export default function CodesPage() {
     setCopiedId(id);
     setTimeout(() => {
       setCopiedId((curr) => (curr === id ? null : curr));
+    }, 2000);
+  }
+
+  async function copyAllVisible(codes: string[]) {
+    if (codes.length === 0) return;
+    const joined = codes.join(", ");
+    try {
+      await navigator.clipboard.writeText(joined);
+    } catch {
+      /* clipboard blocked — keep UX */
+    }
+    setCopiedAllCount(codes.length);
+    setTimeout(() => {
+      setCopiedAllCount((curr) => (curr === codes.length ? null : curr));
     }, 2000);
   }
 
@@ -207,11 +221,26 @@ export default function CodesPage() {
         <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-flame">
           Locker Codes
         </div>
-        <h1 className="mt-1 font-display text-5xl leading-none tracking-wide text-ink md:text-7xl">
-          Locker Codes
-        </h1>
+        <div className="mt-1 flex items-start gap-2">
+          <h1 className="font-display text-5xl leading-none tracking-wide text-ink md:text-7xl">
+            Locker Codes
+          </h1>
+          <details className="group relative mt-2">
+            <summary
+              aria-label="About these codes"
+              className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-surface text-[11px] font-bold text-muted transition hover:border-flame/60 hover:text-flame [&::-webkit-details-marker]:hidden"
+            >
+              ?
+            </summary>
+            <div className="absolute left-0 z-10 mt-2 w-72 max-w-[80vw] rounded-lg border border-line bg-surface2 p-3 text-[11px] leading-relaxed text-muted shadow-lg">
+              Codes are community-aggregated from public sources. Verify in-game
+              before entering. Most codes are single-use per account and expire
+              without notice.
+            </div>
+          </details>
+        </div>
         <p className="mt-2 max-w-2xl text-sm text-muted">
-          Active drops · last sync 00:47 ago · source: 2K Twitter, livestreams,
+          Community-aggregated codes · last sync 00:47 ago · source: 2K Twitter, livestreams,
           MyTeam community.
         </p>
       </header>
@@ -258,7 +287,7 @@ export default function CodesPage() {
                 className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider transition ${
                   active
                     ? "border-flame bg-flame text-black"
-                    : "border-line bg-surface text-muted hover:border-flame/60 hover:text-ink"
+                    : "border-line bg-surface/40 text-muted hover:bg-surface hover:text-ink"
                 }`}
               >
                 {m}
@@ -317,6 +346,19 @@ export default function CodesPage() {
               Hide redeemed
             </span>
           </label>
+
+          <button
+            type="button"
+            onClick={() => copyAllVisible(filtered.map((c) => c.code))}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 rounded-full border border-flame/40 bg-flame/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-flame transition hover:border-flame hover:bg-flame/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Copy visible
+            <span className="num text-[10px] text-muted">({filtered.length})</span>
+          </button>
+          {copiedAllCount !== null && (
+            <Pill tone="lime">Copied {copiedAllCount} codes</Pill>
+          )}
         </div>
       </section>
 
@@ -344,28 +386,24 @@ export default function CodesPage() {
         )}
       </section>
 
-      {/* Archive */}
+      {/* Archive — closed by default */}
       <section aria-label="Archive">
-        <button
-          type="button"
-          onClick={() => setArchiveOpen((v) => !v)}
-          className="flex w-full items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-left transition hover:border-flame/40"
-          aria-expanded={archiveOpen}
-        >
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
-              Archive
+        <details className="group">
+          <summary className="flex w-full cursor-pointer list-none items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-left transition hover:border-flame/40 [&::-webkit-details-marker]:hidden">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+                Archive
+              </div>
+              <div className="mt-0.5 font-display text-2xl tracking-wide text-ink">
+                {ARCHIVED_CODES.length} expired codes
+              </div>
             </div>
-            <div className="mt-0.5 font-display text-2xl tracking-wide text-ink">
-              {ARCHIVED_CODES.length} expired codes
-            </div>
-          </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-flame">
-            {archiveOpen ? "Hide" : "Show"} →
-          </span>
-        </button>
+            <span className="text-xs font-bold uppercase tracking-wider text-flame">
+              <span className="group-open:hidden">Show →</span>
+              <span className="hidden group-open:inline">Hide →</span>
+            </span>
+          </summary>
 
-        {archiveOpen && (
           <ul className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
             {[...ARCHIVED_CODES]
               .sort(
@@ -400,15 +438,8 @@ export default function CodesPage() {
                 </li>
               ))}
           </ul>
-        )}
+        </details>
       </section>
-
-      {/* Disclaimer */}
-      <footer className="rounded-lg border border-line bg-surface2 p-3 text-[11px] text-muted">
-        Codes are community-aggregated from public sources. Verify in-game
-        before entering. Most codes are single-use per account and expire
-        without notice.
-      </footer>
 
       {/* Tiny CSS for blinking gold under 1h */}
       <style
@@ -437,7 +468,6 @@ function HeroPanel({
   const ms = msUntilExpiry(code, now);
   const tone = expiryTone(ms);
   const remaining = ms !== null ? formatCountdown(ms) : "—";
-  const isHot = ms !== null && ms < 3600_000 && ms > 0;
   const copied = copiedId === code.id;
 
   return (
@@ -458,18 +488,7 @@ function HeroPanel({
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
             Code
           </div>
-          <div
-            onClick={() => onCopy(code.code, code.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onCopy(code.code, code.id);
-              }
-            }}
-            className="mt-1 cursor-pointer select-all break-all font-mono text-2xl font-bold leading-tight text-ink md:text-4xl"
-          >
+          <div className="mt-1 cursor-text select-all break-all font-mono text-2xl font-bold leading-tight text-ink md:text-4xl">
             {code.code}
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">

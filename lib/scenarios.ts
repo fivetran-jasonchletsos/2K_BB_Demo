@@ -604,6 +604,45 @@ export function getRandomScenario(pool: Scenario[] = SCENARIOS): Scenario {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// Stable string hash → 32-bit unsigned int. Used for daily-drill seeding.
+export function hashDate(s: string): number {
+  let h = 2166136261 >>> 0; // FNV-1a init
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}
+
+// Deterministic 3-scenario set for a given yyyy-mm-dd date string.
+export function getDailyScenarios(date: string, count: number = 3): Scenario[] {
+  const pool = [...SCENARIOS];
+  let seed = hashDate(date) || 1;
+  const rand = () => {
+    seed = (Math.imul(seed, 9301) + 49297) >>> 0;
+    seed = seed % 233280;
+    return seed / 233280;
+  };
+  // Fisher-Yates with seeded RNG
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(count, pool.length));
+}
+
+export function todayKey(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function yesterdayKey(d: Date = new Date()): string {
+  const y = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  return todayKey(y);
+}
+
 export type PerScenarioStatus =
   | "unseen"
   | "optimal"

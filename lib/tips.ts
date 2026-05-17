@@ -32,6 +32,10 @@ export type Tip = {
   tags: string[];
   source?: string;
   patchVerified?: string;
+  /** One-line punchy hook shown on collapsed card. Under 90 chars. */
+  hook?: string;
+  /** Parsed VC-per-hour rate where the tip clearly maps to one. */
+  vcPerHour?: number;
 };
 
 export const CATEGORY_LABEL: Record<TipCategory, string> = {
@@ -74,6 +78,8 @@ export const TIPS: Tip[] = [
     tags: ["daily", "mycareer", "guaranteed"],
     source: "In-game daily reward",
     patchVerified: "1.7",
+    hook: "1,500 VC in 4 min. Caps once per day, resets 4am ET.",
+    vcPerHour: 22500,
   },
   {
     id: "vc-domination-vc-min",
@@ -86,6 +92,8 @@ export const TIPS: Tip[] = [
     value: "~66 VC/min",
     tags: ["myteam", "domination", "math"],
     source: "Community-verified across 40-game samples",
+    hook: "Pro Domination = 3,960 VC/hr. HoF only pays 2,460/hr.",
+    vcPerHour: 3960,
   },
   {
     id: "vc-skip-cutscenes",
@@ -97,6 +105,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "~11 hrs/season",
     tags: ["mycareer", "qol"],
+    hook: "Options skips every cutscene. 11 hours back over an 82-game season.",
   },
   {
     id: "vc-mobile-cross",
@@ -109,6 +118,8 @@ export const TIPS: Tip[] = [
     value: "~2,650 VC/wk",
     tags: ["mobile", "cross-rewards", "daily"],
     source: "2K Mobile companion app",
+    hook: "Free 2,650 VC/wk from the phone app. 20 seconds of taps.",
+    vcPerHour: 22000,
   },
   {
     id: "vc-myteam-tokens-path",
@@ -120,6 +131,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "weekly",
     value: "40 tokens/wk",
     tags: ["myteam", "tokens", "weekly"],
+    hook: "TT Online for tokens if you win 60%+. Otherwise TT100. Cap is 40/wk.",
   },
   {
     id: "vc-endorsement-stack",
@@ -131,6 +143,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "+15% VC/game",
     tags: ["mycareer", "endorsements"],
+    hook: "Hold 3 endorsement offers, then sign all four at once to lock +15%/game.",
   },
 
   // HIDDEN MECHANICS
@@ -146,6 +159,7 @@ export const TIPS: Tip[] = [
     tags: ["shooting", "jumpshot", "math"],
     source: "Frame data community sheet",
     patchVerified: "1.7",
+    hook: "Speed B = 0.10s green window. Best balance of timing and contest defense.",
   },
   {
     id: "mech-sprint-fatigue",
@@ -157,6 +171,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Max speed kept",
     tags: ["sprint", "stamina", "transition"],
+    hook: "Sprint > 2s walk > sprint again. Resets fatigue, keeps top speed.",
   },
   {
     id: "mech-pass-icon",
@@ -168,6 +183,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Off-ball control",
     tags: ["passing", "off-ball", "advanced"],
+    hook: "Hold L1, tap a teammate icon to take over off-ball. Cuts and inbounds get easy.",
   },
   {
     id: "mech-pnr-defender",
@@ -179,6 +195,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "PnR stops up ~22%",
     tags: ["pnr", "coverage", "defense"],
+    hook: "Switch on guards, drop on bigs without floaters. Default Drop gets cooked.",
   },
   {
     id: "mech-shot-meter-off",
@@ -191,6 +208,7 @@ export const TIPS: Tip[] = [
     value: "+4% green rate",
     tags: ["shooting", "meter", "advanced"],
     source: "2K Labs frame sample",
+    hook: "Meter off = +4% greens. Time off the audio cue. Adjustment takes a week.",
   },
 
   // MYCAREER
@@ -204,6 +222,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "~22% XP/quest",
     tags: ["affiliation", "rep", "order"],
+    hook: "Rep South Side first. 22% more XP per quest from shorter travel.",
   },
   {
     id: "mc-trade-request-shots",
@@ -215,6 +234,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "weekly",
     value: "+40% plays called",
     tags: ["coach", "shots", "trade"],
+    hook: "Three sub-7 FGA games triggers coach auto-tune. +40% plays next game.",
   },
   {
     id: "mc-teammate-grade",
@@ -226,6 +246,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "+0.3 grade/poss",
     tags: ["grade", "bigs", "passing"],
+    hook: "Bigs: hockey assist beats a made jumper for teammate grade. 4x the points.",
   },
   {
     id: "mc-dunk-meter-sweet",
@@ -237,6 +258,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Contact finish rate +18%",
     tags: ["dunks", "meter", "contact"],
+    hook: "Release the dunk meter at 75%, not 100%. 100% = layup or block.",
   },
   {
     id: "mc-endorsement-math",
@@ -248,6 +270,8 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "9,200 VC/wk safe",
     tags: ["endorsement", "math", "vc"],
+    hook: "Stop at 4 endorsements. 5th adds a shoe-game obligation that costs 8K if missed.",
+    vcPerHour: 9200,
   },
 
   // REP GRINDING
@@ -261,6 +285,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "15-60 min",
     value: "9,375 rep/hr",
     tags: ["park", "rec", "math"],
+    hook: "3v3 park = 9,375 rep/hr. Rec only wins on rep with a 5-game streak.",
   },
   {
     id: "rep-proam-queue",
@@ -272,6 +297,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "1.4x park rep",
     tags: ["proam", "queue", "timing"],
+    hook: "Queue Pro-Am 7-10pm ET weekdays. 1.4x park rep, sub-90s queues.",
   },
   {
     id: "rep-affiliate-weekend",
@@ -284,6 +310,7 @@ export const TIPS: Tip[] = [
     value: "1.5x weekend rep",
     tags: ["weekend", "boost", "park"],
     source: "Community-verified",
+    hook: "Affiliate weekend boost is 1.5x, not 2x. Stack dailies into Saturday.",
   },
   {
     id: "rep-win-streak-ceiling",
@@ -295,6 +322,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "1.75x cap",
     tags: ["streak", "multiplier", "math"],
+    hook: "Streak bonus caps at 5 games (1.75x). Don't chase 10s, they pay the same.",
   },
 
   // ANIMATIONS
@@ -309,6 +337,7 @@ export const TIPS: Tip[] = [
     value: "Top tier release",
     tags: ["jumpshot", "base", "guards"],
     patchVerified: "1.7",
+    hook: "Under 6'5\": Base Pro 3 beats Trae. Wider green window, B+ contest immunity.",
   },
   {
     id: "anim-dunk-cradle",
@@ -320,6 +349,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Animation unlock",
     tags: ["dunks", "stat-req", "height"],
+    hook: "Under 6'5\"? Skip Driving Dunk over 84. Cradles are locked, hop steps aren't.",
   },
   {
     id: "anim-dribble-pullup",
@@ -331,6 +361,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Speed A unlock",
     tags: ["dribble", "pullup", "ball-handle"],
+    hook: "Push Ball Handle to 84 for Speed A pull-ups. Under 78 = generic windup.",
   },
   {
     id: "anim-layup-contact",
@@ -342,6 +373,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Contact layup unlock",
     tags: ["layups", "acrobat", "badge"],
+    hook: "No Acrobat badge = no contact layup. Even Bronze is the gatekeeper.",
   },
   {
     id: "anim-locked-list",
@@ -353,6 +385,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Saved upgrade points",
     tags: ["sigs", "ball-handle", "tradeoffs"],
+    hook: "Pro Touch sigs hurt your shot %. Don't chase 90+ Ball Handle for sigs.",
   },
 
   // GLITCHES (mark uncertain)
@@ -367,6 +400,7 @@ export const TIPS: Tip[] = [
     value: "Court spot saved",
     tags: ["park", "exploit", "unverified"],
     source: "Reddit community report",
+    hook: "Unverified: standing on court border at server reset reportedly saves spot.",
   },
   {
     id: "glitch-pack-order",
@@ -379,6 +413,7 @@ export const TIPS: Tip[] = [
     value: "Unconfirmed",
     tags: ["myteam", "packs", "unverified"],
     source: "Community folklore",
+    hook: "Pity-pull pack theory is folklore. 500-pack samples show no effect.",
   },
   {
     id: "glitch-anim-cancel",
@@ -391,6 +426,7 @@ export const TIPS: Tip[] = [
     value: "Re-dribble window",
     tags: ["exploit", "cancel", "uncertain"],
     patchVerified: "1.7",
+    hook: "L2 + pass within 0.4s cancels pickup. Don't trust it in ranked — likely patch.",
   },
 
   // MYTEAM
@@ -404,6 +440,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "weekly",
     value: "~250 tokens saved",
     tags: ["tokens", "rotation", "weekly"],
+    hook: "Token store rotates Thursday noon ET. Hold 40 tokens through Wednesday.",
   },
   {
     id: "mt-auction-house-time",
@@ -415,6 +452,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "weekly",
     value: "+18% MT/auction",
     tags: ["auction", "timing", "mt"],
+    hook: "List packs Sunday 9pm ET with 6-hour expiry. Peak bidders = +18% MT.",
   },
   {
     id: "mt-synergy-stack",
@@ -426,6 +464,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "+24 stat at 4-stack",
     tags: ["synergy", "lineup", "math"],
+    hook: "Team synergy compounds. 4-stack = +24 stat. 5th adds nothing.",
   },
   {
     id: "mt-tt-offline",
@@ -437,6 +476,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "15-60 min",
     value: "250 MT + 1 token/12min",
     tags: ["tt-offline", "grind", "weekly"],
+    hook: "TT Offline = 1 token + 250 MT per 12 min. 21 boards/wk hits token cap.",
   },
 
   // PARK & REC
@@ -450,6 +490,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "33 vs 31 rep/sec",
     tags: ["squad", "park", "math"],
+    hook: "Random 3v3 beats squad on rep/sec unless your squad is undefeated.",
   },
   {
     id: "park-latency-shot",
@@ -461,6 +502,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Online green rate restored",
     tags: ["latency", "shooting", "settings"],
+    hook: "Online park adds 80-120ms lag. Set Shot Timing Cue to Push, drop to -6.",
   },
   {
     id: "park-court-by-time",
@@ -472,6 +514,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Queue under 30s",
     tags: ["courts", "timing", "queue"],
+    hook: "South Side mornings = lowest comp, fastest queues. Old Town nights = sweats.",
   },
   {
     id: "park-affiliate-badge",
@@ -483,6 +526,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Cosmetic + 1 stat",
     tags: ["affiliate", "badge", "park"],
+    hook: "Affiliate badge needs 200 wins per court. Skip unless you're already 99 OVR.",
   },
 
   // DEFENSE
@@ -496,6 +540,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "+56% reach distance",
     tags: ["steal", "stick", "input"],
+    hook: "Right stick steal reaches 1.4m vs square's 0.9m. Stick perimeter, square post.",
   },
   {
     id: "def-settings-matchup",
@@ -507,6 +552,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "FG% allowed -6%",
     tags: ["settings", "matchup", "advanced"],
+    hook: "Force right on right-handed shooters. Force baseline on PGs. -6% FG allowed.",
   },
   {
     id: "def-steal-foul-math",
@@ -518,6 +564,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "Foul rate -8%",
     tags: ["steal", "fouls", "stat-req"],
+    hook: "Push Steal to 90 for the foul rate drop (12% > 4%). That's the real reason.",
   },
   {
     id: "def-help-rotation",
@@ -529,6 +576,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Read help rotations",
     tags: ["help", "ai", "advanced"],
+    hook: "Help rotates at 1.5m from rim. Drive to 1.6m and kick — defender's committed.",
   },
 
   // OFFENSE
@@ -542,6 +590,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "+3 effective 3PT",
     tags: ["tags", "spacing", "coach"],
+    hook: "Tag your two best shooters Spot Up. +3 effective 3PT, no slasher penalty.",
   },
   {
     id: "off-play-shortcuts",
@@ -553,6 +602,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "1.8s saved/possession",
     tags: ["plays", "shortcuts", "input"],
+    hook: "L1+R1 calls Play 1, L1+L2 calls Play 2. Skip the menu, save 1.8s/poss.",
   },
   {
     id: "off-inbound-wins",
@@ -564,6 +614,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Open 3 every inbound",
     tags: ["inbound", "exploit-ish", "corner"],
+    hook: "Inbound to corner shooter under 0.5s. AI freezes 1.2s — open 3 every time.",
   },
   {
     id: "off-transition-math",
@@ -575,6 +626,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "3x possessions/min",
     tags: ["transition", "pace", "math"],
+    hook: "Transition 3s shoot the same % as half-court but in 1/3 the time. Push pace.",
   },
 
   // EXTRA MECHANICS
@@ -588,6 +640,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Stamina preserved",
     tags: ["stamina", "dribble", "shooting"],
+    hook: "Each sig size-up burns 4% stamina. One move then attack — never chain.",
   },
   {
     id: "mech-rebound-positioning",
@@ -599,6 +652,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "+38% contested boards",
     tags: ["rebound", "box-out", "timing"],
+    hook: "L1+Square within 0.5s of opponent shot = strong box-out chain. +38% rebounds.",
   },
   {
     id: "mech-foul-trouble",
@@ -610,6 +664,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "<5 min",
     value: "+6-8 pts/sim",
     tags: ["sim", "fouls", "stat-padding"],
+    hook: "Got 28 pts? Sim the 4th. AI fouls +18% — easy FTs to clear 35.",
   },
   {
     id: "mech-screen-angle",
@@ -621,6 +676,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Switch forced 70%",
     tags: ["screen", "pnr", "advanced"],
+    hook: "Defender goes over the screen? Double-tap L1 — forces switch 70% of the time.",
   },
   {
     id: "mech-takeover-chain",
@@ -632,6 +688,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "ongoing",
     value: "Takeover 30% faster",
     tags: ["takeover", "shooting", "math"],
+    hook: "Pick one shot type per game. Repeating same-type greens fills takeover 30% faster.",
   },
 
   // MORE REP / VC
@@ -645,6 +702,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "weekly",
     value: "2,000 rep/win",
     tags: ["rooftop", "event", "weekend"],
+    hook: "Rooftop 2v2 = 2,000 rep/win. Fri/Sat 8pm-12am ET only. Queue 5 min early.",
   },
   {
     id: "vc-locker-codes",
@@ -656,6 +714,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "<5 min",
     value: "5-15k VC/code",
     tags: ["codes", "free", "weekly"],
+    hook: "Set a 2pm ET reminder for Tuesday + Friday. Codes expire in 24-72h.",
   },
   {
     id: "vc-season-pass",
@@ -667,6 +726,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "+11,500 VC/season",
     tags: ["pass", "season", "math"],
+    hook: "Pro Pass ROI hits at level 28. Skip if you play under 5 hrs/wk.",
   },
 
   // MYTEAM EXTRA
@@ -680,6 +740,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "15-60 min",
     value: "Evo'd 92 in 40min",
     tags: ["evo", "spotlight", "tt100"],
+    hook: "Spotlight Sims clear evo reqs in 1 min/quarter. 84 > 92 evo in 40 min.",
   },
 
   // ANIMATIONS EXTRA
@@ -693,6 +754,7 @@ export const TIPS: Tip[] = [
     timeToExecute: "one-time",
     value: "KD base unlock",
     tags: ["jumpshot", "base", "bigs"],
+    hook: "6'10\"+: KD base at 70 3PT. Giannis base gets blocked by guards.",
   },
 ];
 

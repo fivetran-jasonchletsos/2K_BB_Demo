@@ -15,10 +15,11 @@ import {
 } from "@/lib/tips";
 
 type CategoryFilter = "all" | TipCategory;
-type SortKey = "value" | "newest" | "difficulty";
+type SortKey = "value" | "vcph" | "newest" | "difficulty";
 
 const FAV_KEY = "2klab.favoriteTips";
 const LEARNED_KEY = "2klab.learnedTips";
+const COPY_COUNT_KEY = "2klab.tips.copyCounts";
 
 const CATEGORY_TONE: Record<TipCategory, "flame" | "ice" | "gold" | "lime" | "default" | "muted"> = {
   "vc-farming": "gold",
@@ -58,10 +59,84 @@ function writeSet(key: string, s: Set<string>) {
   }
 }
 
+function readCounts(key: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === "object") return obj as Record<string, number>;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCounts(key: string, c: Record<string, number>) {
+  try {
+    localStorage.setItem(key, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+}
+
 function parseVcNumber(value: string): number {
   const m = value.match(/([\d,]+)/);
   if (!m) return 0;
   return parseInt(m[1].replace(/,/g, ""), 10) || 0;
+}
+
+function hookFor(tip: Tip): string {
+  if (tip.hook && tip.hook.length > 0) return tip.hook;
+  const firstLine = (tip.body.split("\n").find(Boolean) ?? "").trim();
+  if (firstLine.length <= 90) return firstLine;
+  return firstLine.slice(0, 90).trimEnd() + "…";
+}
+
+function formatVcPerHour(n: number): string {
+  if (n >= 1000) {
+    const k = n / 1000;
+    // Trim trailing .0 — 22000 -> "22K", 9200 -> "9.2K"
+    const s = k >= 10 ? Math.round(k).toString() : k.toFixed(1).replace(/\.0$/, "");
+    return `${s}K/hr`;
+  }
+  return `${n}/hr`;
+}
+
+function tipToDiscord(tip: Tip): string {
+  const headline = hookFor(tip);
+  return `**${tip.title}**\n${headline}\n— from 2K LAB · /tips`;
+}
+
+function bulkTipsToDiscord(tips: Tip[]): string {
+  const header = `**2K LAB · favorite tips (${tips.length})**`;
+  const body = tips.map((t) => `• **${t.title}** — ${hookFor(t)}`).join("\n");
+  return `${header}\n${body}\n— from 2K LAB · /tips`;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+  // Legacy fallback
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 function DifficultyDots({ level }: { level: 1 | 2 | 3 }) {
@@ -111,32 +186,66 @@ function CheckIcon({ filled }: { filled: boolean }) {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 stroke-muted"
+      fill="none"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-3.5 w-3.5 stroke-muted transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 function TipCard({
   tip,
   favorited,
   learned,
   expanded,
+  copyCount,
+  justCopied,
   onToggleFav,
   onToggleLearned,
   onToggleExpand,
-  compact = false,
+  onCopy,
 }: {
   tip: Tip;
   favorited: boolean;
   learned: boolean;
   expanded: boolean;
+  copyCount: number;
+  justCopied: boolean;
   onToggleFav: () => void;
   onToggleLearned: () => void;
   onToggleExpand: () => void;
-  compact?: boolean;
+  onCopy: () => void;
 }) {
   const tone = CATEGORY_TONE[tip.category];
   const paragraphs = tip.body.split("\n").filter(Boolean);
+  const hook = hookFor(tip);
   return (
-    <Card
-      className={`flex flex-col gap-3 ${learned ? "opacity-70" : ""}`}
-    >
-      <div className="flex items-start justify-between gap-3">
+    <Card className={`flex flex-col gap-3 ${learned ? "opacity-70" : ""}`}>
+      <div className="flex items-start justify-between gap-2">
         <button
           type="button"
           onClick={onToggleExpand}
@@ -146,12 +255,18 @@ function TipCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <Pill tone={tone}>{CATEGORY_LABEL[tip.category]}</Pill>
             <DifficultyDots level={tip.difficulty} />
+            {tip.vcPerHour != null && (
+              <span className="num inline-flex items-baseline gap-0.5 rounded-md bg-gold/15 px-1.5 py-0.5 font-display text-[13px] font-bold leading-none text-gold">
+                {formatVcPerHour(tip.vcPerHour)}
+              </span>
+            )}
           </div>
           <h3 className="mt-2 font-display text-xl leading-tight tracking-wide text-ink md:text-2xl">
             {tip.title}
           </h3>
+          <p className="mt-1.5 text-[13px] leading-snug text-ink/80">{hook}</p>
         </button>
-        <div className="flex shrink-0 flex-col items-center gap-2">
+        <div className="flex shrink-0 flex-col items-center gap-1.5">
           <button
             type="button"
             onClick={onToggleFav}
@@ -173,39 +288,75 @@ function TipCard({
         </div>
       </div>
 
-      {(expanded || !compact) && (
-        <div className="space-y-1.5 text-sm leading-snug text-ink/90">
-          {paragraphs.map((p, i) => (
-            <p key={i}>{p}</p>
-          ))}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-1.5">
-        <Pill tone="muted">{tip.timeToExecute}</Pill>
         <Pill tone={tone}>{tip.value}</Pill>
-        {tip.patchVerified && (
-          <Pill tone="lime">Patch {tip.patchVerified}</Pill>
-        )}
+        <Pill tone="muted">{tip.timeToExecute}</Pill>
+        {tip.patchVerified && <Pill tone="lime">Patch {tip.patchVerified}</Pill>}
+        <div className="ml-auto flex items-center gap-1.5">
+          {justCopied ? (
+            <span className="inline-flex items-center rounded-full border border-lime/40 bg-lime/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-lime">
+              Copied
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label="Copy tip for Discord"
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-surface2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted transition hover:border-flame/50 hover:text-ink"
+            >
+              <CopyIcon />
+              <span>Copy</span>
+            </button>
+          )}
+          {copyCount > 0 && (
+            <span
+              className="num inline-flex items-center rounded-full bg-flame/15 px-1.5 py-0.5 text-[10px] font-bold text-flame"
+              aria-label={`Copied ${copyCount} times`}
+              title={`Copied ${copyCount} times`}
+            >
+              {copyCount}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted transition hover:border-flame/50 hover:text-ink"
+          >
+            <span>{expanded ? "Less" : "More"}</span>
+            <ChevronIcon open={expanded} />
+          </button>
+        </div>
       </div>
 
-      {tip.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {tip.tags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-line bg-surface2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
+      {expanded && (
+        <>
+          <div className="space-y-1.5 border-t border-line pt-3 text-sm leading-snug text-ink/90">
+            {paragraphs.map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
 
-      {tip.source && (
-        <div className="text-[11px] text-muted">
-          Source · <span className="text-ink/70">{tip.source}</span>
-        </div>
+          {tip.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {tip.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-line bg-surface2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {tip.source && (
+            <div className="text-[11px] text-muted">
+              Source · <span className="text-ink/70">{tip.source}</span>
+            </div>
+          )}
+        </>
       )}
     </Card>
   );
@@ -219,14 +370,17 @@ export default function TipsPage() {
   const [learned, setLearned] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [todaysExpanded, setTodaysExpanded] = useState<Set<string>>(new Set());
+  const [copyCounts, setCopyCounts] = useState<Record<string, number>>({});
+  const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
+  const [bulkCopied, setBulkCopied] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [dateKey, setDateKey] = useState<string>(todayKey());
 
   useEffect(() => {
     setFavorites(readSet(FAV_KEY));
     setLearned(readSet(LEARNED_KEY));
+    setCopyCounts(readCounts(COPY_COUNT_KEY));
     setHydrated(true);
-    // Recheck the date every 60s so the daily three rotate at midnight.
     const id = setInterval(() => {
       const k = todayKey();
       setDateKey((prev) => (prev === k ? prev : k));
@@ -263,6 +417,42 @@ export default function TipsPage() {
     setter(next);
   };
 
+  const flashCopied = (id: string) => {
+    setCopiedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    setTimeout(() => {
+      setCopiedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 2000);
+  };
+
+  const handleCopyTip = async (tip: Tip) => {
+    const ok = await copyText(tipToDiscord(tip));
+    if (!ok) return;
+    flashCopied(tip.id);
+    setCopyCounts((prev) => {
+      const next = { ...prev, [tip.id]: (prev[tip.id] ?? 0) + 1 };
+      writeCounts(COPY_COUNT_KEY, next);
+      return next;
+    });
+  };
+
+  const handleBulkCopy = async () => {
+    const favTips = TIPS.filter((t) => favorites.has(t.id));
+    if (favTips.length === 0) return;
+    const ok = await copyText(bulkTipsToDiscord(favTips));
+    if (!ok) return;
+    setBulkCopied(true);
+    setTimeout(() => setBulkCopied(false), 2000);
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = TIPS.slice();
@@ -271,6 +461,8 @@ export default function TipsPage() {
       list = list.filter((t) => {
         const hay =
           t.title.toLowerCase() +
+          " " +
+          (t.hook ?? "").toLowerCase() +
           " " +
           t.body.toLowerCase() +
           " " +
@@ -281,10 +473,15 @@ export default function TipsPage() {
 
     if (sort === "value") {
       list.sort((a, b) => parseVcNumber(b.value) - parseVcNumber(a.value));
+    } else if (sort === "vcph") {
+      list.sort((a, b) => {
+        const av = a.vcPerHour ?? -1;
+        const bv = b.vcPerHour ?? -1;
+        return bv - av;
+      });
     } else if (sort === "difficulty") {
       list.sort((a, b) => a.difficulty - b.difficulty);
     } else if (sort === "newest") {
-      // No real timestamps — keep array order (newest authored last). Reverse.
       list.reverse();
     }
     return list;
@@ -299,18 +496,46 @@ export default function TipsPage() {
     };
   }, []);
 
+  const favCount = favorites.size;
+
   return (
     <div className="space-y-8">
-      <header>
-        <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-flame">
-          NBA 2K26 · Knowledge Base
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-flame">
+            NBA 2K26 · Knowledge Base
+          </div>
+          <h1 className="mt-1 font-display text-5xl leading-none tracking-wide text-ink md:text-6xl">
+            Secrets
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted">
+            Advanced mechanics · VC farming · animation unlocks · MyTeam edges
+          </p>
         </div>
-        <h1 className="mt-1 font-display text-5xl leading-none tracking-wide text-ink md:text-6xl">
-          Secrets
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted">
-          Hidden mechanics · VC farming · animation unlocks · MyTeam edges
-        </p>
+        {hydrated && (
+          <button
+            type="button"
+            onClick={handleBulkCopy}
+            disabled={favCount === 0}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition ${
+              favCount === 0
+                ? "cursor-not-allowed border-line bg-surface text-muted/50"
+                : bulkCopied
+                  ? "border-lime/50 bg-lime/15 text-lime"
+                  : "border-line bg-surface text-muted hover:border-flame/50 hover:text-ink"
+            }`}
+            aria-label="Copy all favorited tips as a Discord-ready list"
+          >
+            <CopyIcon />
+            {bulkCopied ? (
+              <span>Copied {favCount}</span>
+            ) : (
+              <span>
+                Copy favorites <span className="num text-gold">{favCount}</span>
+              </span>
+            )}
+          </button>
+        )}
       </header>
 
       {/* TODAY'S THREE */}
@@ -318,11 +543,22 @@ export default function TipsPage() {
         title="Today's three"
         subtitle={`Rotates at midnight · ${dateKey}`}
       >
+        {hydrated &&
+        todaysTips.length > 0 &&
+        todaysTips.every((t) => favorites.has(t.id) || learned.has(t.id)) ? (
+          <div
+            className="inline-flex items-center gap-2 rounded-full border border-lime/40 bg-lime/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-lime"
+            aria-label="All of today's three tips are caught up"
+          >
+            <CheckIcon filled />
+            <span>All caught up — back tomorrow</span>
+          </div>
+        ) : (
         <div className="grid gap-3 md:grid-cols-3">
           {todaysTips.map((t) => {
             const isOpen = todaysExpanded.has(t.id);
             const tone = CATEGORY_TONE[t.category];
-            const firstLine = t.body.split("\n")[0] ?? "";
+            const hook = hookFor(t);
             return (
               <button
                 key={t.id}
@@ -336,23 +572,26 @@ export default function TipsPage() {
                 <div className="flex items-center gap-1.5">
                   <Pill tone={tone}>{CATEGORY_LABEL[t.category]}</Pill>
                   <DifficultyDots level={t.difficulty} />
+                  {t.vcPerHour != null && (
+                    <span className="num ml-auto inline-flex items-baseline rounded-md bg-gold/15 px-1.5 py-0.5 font-display text-[13px] font-bold leading-none text-gold">
+                      {formatVcPerHour(t.vcPerHour)}
+                    </span>
+                  )}
                 </div>
                 <div className="font-display text-lg leading-tight tracking-wide text-ink md:text-xl">
                   {t.title}
                 </div>
-                <div
-                  className={`text-sm text-ink/80 ${isOpen ? "" : "line-clamp-2"}`}
-                >
-                  {isOpen ? (
-                    t.body.split("\n").filter(Boolean).map((p, i) => (
+                {isOpen ? (
+                  <div className="text-sm text-ink/80">
+                    {t.body.split("\n").filter(Boolean).map((p, i) => (
                       <p key={i} className="mb-1.5 last:mb-0">
                         {p}
                       </p>
-                    ))
-                  ) : (
-                    firstLine
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-ink/80">{hook}</div>
+                )}
                 <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
                   <Pill tone="muted">{t.timeToExecute}</Pill>
                   <Pill tone={tone}>{t.value}</Pill>
@@ -364,6 +603,7 @@ export default function TipsPage() {
             );
           })}
         </div>
+        )}
       </Section>
 
       {/* STATS */}
@@ -409,14 +649,15 @@ export default function TipsPage() {
         <div className="grid gap-2 md:grid-cols-[1fr_auto]">
           <input
             type="search"
-            placeholder="Search title, body, or tags"
+            placeholder="Search title, hook, body, or tags"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-flame focus:outline-none"
           />
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {([
               ["value", "Highest value"],
+              ["vcph", "VC/hr"],
               ["newest", "Newest"],
               ["difficulty", "Difficulty"],
             ] as [SortKey, string][]).map(([k, label]) => {
@@ -469,11 +710,14 @@ export default function TipsPage() {
                   favorited={favorites.has(tip.id)}
                   learned={learned.has(tip.id)}
                   expanded={expanded.has(tip.id)}
+                  copyCount={copyCounts[tip.id] ?? 0}
+                  justCopied={copiedIds.has(tip.id)}
                   onToggleFav={() => toggleFav(tip.id)}
                   onToggleLearned={() => toggleLearned(tip.id)}
                   onToggleExpand={() =>
                     toggleExpanded(tip.id, expanded, setExpanded)
                   }
+                  onCopy={() => handleCopyTip(tip)}
                 />
               </li>
             ))}

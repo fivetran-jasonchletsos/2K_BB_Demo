@@ -1,21 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Card, Pill, Section, Stat } from "@/components/ui";
+import { Fragment, useMemo, useState } from "react";
 import {
+  END_TO_END_TIMING,
   HIGHLIGHT_MARTS,
+  LIFECYCLE_STAGES,
   LINEAGE,
+  MART_SCHEMA_SNIPPETS,
   MODELS,
   PIPELINE_STATS,
   SOURCES,
+  UNDERCURRENTS,
   type Model,
+  type Source,
 } from "@/lib/stack";
 
-const SNIPPETS: Record<string, { label: string; lang: string; body: string }> = {
-  connector: {
-    label: "balldontlie/connector.py",
-    lang: "python",
-    body: `from fivetran_connector_sdk import Connector
+// ───────────────────────────────────────────────────────────────────────────
+// Code receipts — used in <details> blocks
+// ───────────────────────────────────────────────────────────────────────────
+
+const CONNECTOR_PY = `from fivetran_connector_sdk import Connector
 from fivetran_connector_sdk import Logging as log
 from fivetran_connector_sdk import Operations as op
 import requests
@@ -26,10 +30,8 @@ BASE_URL = "https://api.balldontlie.io/v1"
 def schema(configuration: dict):
     return [
         {"table": "players", "primary_key": ["id"]},
-        {"table": "teams",   "primary_key": ["id"]},
         {"table": "games",   "primary_key": ["id"]},
         {"table": "stats",   "primary_key": ["id"]},
-        {"table": "season_averages", "primary_key": ["player_id", "season"]},
     ]
 
 def _headers(configuration: dict) -> dict:
@@ -43,57 +45,11 @@ def update(configuration: dict, state: dict):
     log.info(f"balldontlie sync starting from cursor={cursor}")
     yield from _sync_players(configuration)
     yield from _sync_games(configuration, state)
-    yield from _sync_stats(configuration, state, cursor)`,
-  },
-  staging: {
-    label: "stg_nba__player_stats.sql",
-    lang: "sql",
-    body: `{{ config(materialized='view') }}
+    yield from _sync_stats(configuration, state, cursor)`;
 
-with src as (
-    select * from {{ source('nba_balldontlie', 'stats') }}
-    where coalesce(_fivetran_deleted, false) = false
-),
-games as (
-    select id as game_id, date as game_date, season, home_team_id, visitor_team_id
-    from {{ ref('stg_nba__games') }}
-)
-select
-    s.id::number              as stat_id,
-    s.player_id::number       as player_id,
-    s.team_id::number         as team_id,
-    s.game_id::number         as game_id,
-    g.game_date::date         as game_date,
-    g.season::number          as season,
-    s.min::string             as minutes_str,
-    try_cast(split_part(s.min, ':', 1) as number) as minutes_played,
-    s.pts::number             as pts,
-    s.reb::number             as reb,
-    s.ast::number             as ast,
-    s.stl::number             as stl,
-    s.blk::number             as blk,
-    s.turnover::number        as tov,
-    s.fgm::number             as fgm,
-    s.fga::number             as fga,
-    s.fg3m::number            as fg3m,
-    s.fg3a::number            as fg3a,
-    s.ftm::number             as ftm,
-    s.fta::number             as fta,
-    (s.plus_minus)::number    as plus_minus,
-    s._fivetran_synced::timestamp_tz as _synced_at
-from src s
-left join games g on g.game_id = s.game_id
-qualify row_number() over (
-    partition by s.id order by s._fivetran_synced desc
-) = 1`,
-  },
-  mart: {
-    label: "mart_rating_predictions.sql",
-    lang: "sql",
-    body: `{{ config(
+const MART_SQL = `{{ config(
     materialized='incremental',
-    unique_key='player_id',
-    on_schema_change='append_new_columns'
+    unique_key='player_id'
 ) }}
 
 with p360 as (
@@ -112,426 +68,604 @@ form_delta as (
     select
         player_id,
         current_rating,
-        -- z * 1.5 maps ~+/-2 sigma to ~+/-3 rating points
         round(coalesce(form_z, 0) * 1.5, 2) as d_form,
         case when injury_flag then -2.0 else 0 end as d_injury,
         round(coalesce(news_score, 0) * 1.0, 2) as d_news
     from baseline
-),
-combined as (
-    select
-        player_id,
-        current_rating,
-        d_form, d_injury, d_news,
-        greatest(-5.0, least(5.0,
-            d_form + d_injury + d_news
-        )) as predicted_delta,
-        case
-            when abs(d_injury) >= abs(d_form) and abs(d_injury) >= abs(d_news)
-                then 'injury'
-            when abs(d_form) >= abs(d_news) then 'recent_form'
-            else 'news_sentiment'
-        end as primary_driver,
-        least(1.0, 0.4
-            + (abs(d_form) * 0.15)
-            + (abs(d_news) * 0.10)
-            + (case when d_injury <> 0 then 0.15 else 0 end)
-        ) as confidence
-    from form_delta
 )
 select
     player_id,
     current_rating,
-    predicted_delta::number(3,1) as predicted_delta,
-    confidence::float            as confidence,
-    primary_driver,
-    object_construct(
-        'form',   d_form,
-        'injury', d_injury,
-        'news',   d_news
-    ) as driver_breakdown_json,
-    current_timestamp()          as computed_at
-from combined
-{% if is_incremental() %}
-  where player_id in (select player_id from p360
-                      where updated_at > (select coalesce(max(computed_at), '1970-01-01') from {{ this }}))
-{% endif %}`,
-  },
-  app: {
-    label: "app/pulse/page.tsx (excerpt)",
-    lang: "tsx",
-    body: `// Pulse renders mart_rating_predictions joined to mart_player_360.
-// In production this is fetched server-side from Snowflake via a
-// thin API route; the demo uses a cached JSON snapshot.
+    greatest(-5.0, least(5.0, d_form + d_injury + d_news))::number(3,1)
+        as predicted_delta,
+    current_timestamp() as computed_at
+from form_delta`;
 
+const PULSE_TSX = `// app/pulse/page.tsx — reads mart_rating_predictions
 import { getPredictions } from "@/lib/marts";
-import { Card, Pill } from "@/components/ui";
+import { Pill } from "@/components/ui";
 
 export default async function PulsePage() {
   const rows = await getPredictions({ limit: 25 });
   return (
     <div className="space-y-3">
       {rows.map((r) => (
-        <Card key={r.player_id} className="flex items-center gap-3">
-          <div className="font-display text-2xl text-ink">{r.full_name}</div>
+        <div key={r.player_id} className="flex items-center gap-3">
+          <div className="font-display text-2xl text-ink num">
+            {r.full_name}
+          </div>
           <Pill tone={r.predicted_delta >= 0 ? "lime" : "flame"}>
             {r.predicted_delta >= 0 ? "+" : ""}
             {r.predicted_delta.toFixed(1)}
           </Pill>
-          <span className="ml-auto text-xs text-muted">
-            driver: {r.primary_driver} · conf {Math.round(r.confidence * 100)}%
+          <span className="ml-auto text-xs text-muted num">
+            conf {Math.round(r.confidence * 100)}%
           </span>
-        </Card>
-      ))}
-    </div>
-  );
-}`,
-  },
-};
-
-function ArchDiagram() {
-  const cols: { title: string; nodes: { label: string; sub?: string; tone?: string }[] }[] = [
-    {
-      title: "Sources",
-      nodes: SOURCES.filter((s) => s.id !== "snowflake_internal").map((s) => ({
-        label: s.name,
-        sub: s.vendor,
-      })),
-    },
-    {
-      title: "Fivetran",
-      nodes: SOURCES.filter((s) => s.id !== "snowflake_internal").map((s) => ({
-        label: s.id,
-        sub: `${s.kind.toUpperCase()} · ${s.schedule}`,
-      })),
-    },
-    {
-      title: "Snowflake",
-      nodes: [
-        { label: "RAW_NBA", sub: "nba_balldontlie / nba_stats" },
-        { label: "RAW_SOCIAL", sub: "reddit_2k / espn_news" },
-        { label: "RAW_2K", sub: "twokratings / locker_codes" },
-      ],
-    },
-    {
-      title: "dbt",
-      nodes: [
-        { label: "staging", sub: "7 views" },
-        { label: "intermediate", sub: "2 tables" },
-        { label: "marts", sub: "3 models" },
-      ],
-    },
-    {
-      title: "App",
-      nodes: [
-        { label: "/players", sub: "mart_player_360" },
-        { label: "/pulse", sub: "mart_rating_predictions" },
-        { label: "/codes", sub: "mart_locker_codes_active" },
-      ],
-    },
-  ];
-
-  return (
-    <div className="overflow-x-auto">
-      <div className="grid min-w-[720px] grid-cols-5 gap-3">
-        {cols.map((col, i) => (
-          <div key={col.title} className="flex flex-col">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
-              {col.title}
-            </div>
-            <div
-              className={`flex flex-1 flex-col gap-2 rounded-lg border border-line bg-surface p-2 ${
-                i < cols.length - 1 ? "border-r-2 border-r-flame/30" : ""
-              }`}
-            >
-              {col.nodes.map((n) => (
-                <div
-                  key={n.label}
-                  className="rounded-md border border-line bg-surface2 px-2 py-1.5"
-                >
-                  <div className="text-xs font-semibold text-ink">{n.label}</div>
-                  {n.sub && (
-                    <div className="text-[10px] text-muted">{n.sub}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 grid min-w-[720px] grid-cols-5 gap-3 text-center text-[10px] text-muted">
-        <span>raw JSON / HTML</span>
-        <span>incremental upsert</span>
-        <span>RAW schema</span>
-        <span>SELECT / window / incremental</span>
-        <span>Next.js App Router</span>
-      </div>
-    </div>
-  );
-}
-
-function ModelsTree() {
-  const [open, setOpen] = useState<Record<string, boolean>>({
-    staging: true,
-    intermediate: true,
-    marts: true,
-  });
-  const grouped = useMemo(() => {
-    const g: Record<string, Model[]> = { staging: [], intermediate: [], marts: [] };
-    for (const m of MODELS) g[m.layer].push(m);
-    return g;
-  }, []);
-  const matTone = (m: Model["materialization"]) =>
-    m === "incremental" ? "flame" : m === "table" ? "gold" : m === "view" ? "ice" : "muted";
-
-  return (
-    <div className="divide-y divide-line rounded-lg border border-line bg-surface">
-      {(["staging", "intermediate", "marts"] as const).map((layer) => (
-        <div key={layer}>
-          <button
-            type="button"
-            onClick={() => setOpen((o) => ({ ...o, [layer]: !o[layer] }))}
-            className="flex w-full items-center justify-between px-3 py-2 text-left"
-          >
-            <span className="font-display text-lg tracking-wide text-ink">
-              {layer}
-            </span>
-            <span className="text-xs text-muted">
-              {grouped[layer].length} model{grouped[layer].length === 1 ? "" : "s"} ·{" "}
-              {open[layer] ? "hide" : "show"}
-            </span>
-          </button>
-          {open[layer] && (
-            <ul className="divide-y divide-line/60 border-t border-line bg-bg/30">
-              {grouped[layer].map((m) => (
-                <li key={m.id} className="px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-ink">{m.name}</span>
-                    <Pill tone={matTone(m.materialization) as any}>{m.materialization}</Pill>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">{m.description}</p>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       ))}
     </div>
   );
-}
+}`;
 
-function CodeTabs() {
-  const keys = Object.keys(SNIPPETS);
-  const [active, setActive] = useState(keys[0]);
-  const snippet = SNIPPETS[active];
+// ───────────────────────────────────────────────────────────────────────────
+// Primitives
+// ───────────────────────────────────────────────────────────────────────────
+
+function StatusDot({ status }: { status: Source["status"] }) {
+  const cls =
+    status === "green"
+      ? "bg-lime"
+      : status === "amber"
+      ? "bg-gold"
+      : "bg-flame";
   return (
-    <div className="rounded-lg border border-line bg-surface">
-      <div className="flex flex-wrap gap-1 border-b border-line p-2">
-        {keys.map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setActive(k)}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition ${
-              active === k
-                ? "bg-flame text-black"
-                : "bg-surface2 text-muted hover:text-ink"
-            }`}
-          >
-            {SNIPPETS[k].label}
-          </button>
-        ))}
-      </div>
-      <pre className="overflow-x-auto p-3 text-[11px] leading-relaxed text-ink">
-        <code className="font-mono">{snippet.body}</code>
-      </pre>
-    </div>
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`inline-block h-2 w-2 rounded-full ${cls}`} />
+      <span className="text-[10px] uppercase tracking-wider text-muted">
+        {status}
+      </span>
+    </span>
   );
 }
 
-function SourcesTable() {
+// Sparkline for freshness7d (minutes of staleness; 0 = fresh)
+function FreshnessSpark({ series }: { series: number[] }) {
+  const max = Math.max(1, ...series);
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
-      <table className="min-w-full text-left text-xs">
-        <thead className="bg-surface2 text-[10px] uppercase tracking-wider text-muted">
-          <tr>
-            <th className="px-3 py-2">Source</th>
-            <th className="px-3 py-2">Connector</th>
-            <th className="px-3 py-2">Schedule</th>
-            <th className="px-3 py-2 text-right">Rows today</th>
-            <th className="px-3 py-2">Last sync</th>
-            <th className="px-3 py-2">Tables</th>
+    <span className="inline-flex items-end gap-[2px] align-middle">
+      {series.map((v, i) => {
+        const h = Math.max(2, Math.round((v / max) * 18));
+        const tone = v === 0 ? "bg-line" : v > max * 0.6 ? "bg-flame" : "bg-muted";
+        return (
+          <span
+            key={i}
+            className={`inline-block w-[3px] ${tone}`}
+            style={{ height: `${h}px` }}
+            aria-hidden
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+// Bullet graph: actual horizontal bar with a tick at threshold
+function BulletErr({
+  pct,
+  threshold,
+}: {
+  pct: number;
+  threshold: number;
+}) {
+  const scale = Math.max(2, threshold * 2);
+  const barW = Math.min(100, (pct / scale) * 100);
+  const tickX = Math.min(100, (threshold / scale) * 100);
+  const tone = pct > threshold ? "bg-flame" : pct > threshold * 0.8 ? "bg-gold" : "bg-lime";
+  return (
+    <span className="relative inline-block h-2 w-16 align-middle bg-surface2">
+      <span className={`absolute left-0 top-0 h-full ${tone}`} style={{ width: `${barW}%` }} />
+      <span
+        className="absolute top-[-1px] h-[10px] w-px bg-ink"
+        style={{ left: `${tickX}%` }}
+        aria-hidden
+      />
+    </span>
+  );
+}
+
+// Bullet graph for timing (actual vs target seconds, shared scale)
+function BulletTiming({
+  actual,
+  target,
+  scaleMax,
+}: {
+  actual: number;
+  target: number;
+  scaleMax: number;
+}) {
+  const barW = Math.min(100, (actual / scaleMax) * 100);
+  const tickX = Math.min(100, (target / scaleMax) * 100);
+  const tone = actual > target ? "bg-flame" : "bg-lime";
+  return (
+    <span className="relative inline-block h-2 w-full align-middle bg-surface2">
+      <span className={`absolute left-0 top-0 h-full ${tone}`} style={{ width: `${barW}%` }} />
+      <span
+        className="absolute top-[-1px] h-[10px] w-px bg-ink"
+        style={{ left: `${tickX}%` }}
+        aria-hidden
+      />
+    </span>
+  );
+}
+
+function formatAgo(sec: number) {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 3. Sources box-score
+// ───────────────────────────────────────────────────────────────────────────
+
+function SourcesBoxScore() {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs num">
+        <thead>
+          <tr className="border-b border-line/60 text-[10px] uppercase tracking-wider text-muted">
+            <th className="py-2 pr-3 text-left font-semibold">src</th>
+            <th className="py-2 pr-3 text-left font-semibold">kind</th>
+            <th className="py-2 pr-3 text-left font-semibold">sched</th>
+            <th className="py-2 pr-3 text-right font-semibold">rows/d</th>
+            <th className="py-2 pr-3 text-left font-semibold">fresh 7d</th>
+            <th className="py-2 pr-3 text-left font-semibold">err</th>
+            <th className="py-2 pr-3 text-right font-semibold">err%</th>
+            <th className="py-2 text-left font-semibold">status</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line bg-surface">
-          {SOURCES.map((s) => (
-            <tr key={s.id} className="hover:bg-surface2/50">
-              <td className="px-3 py-2">
-                <div className="font-semibold text-ink">{s.name}</div>
-                <div className="text-[10px] text-muted">{s.vendor}</div>
-              </td>
-              <td className="px-3 py-2">
-                <Pill tone={s.kind === "sdk" ? "flame" : "ice"}>
-                  {s.kind === "sdk" ? "Connector SDK" : "Native"}
-                </Pill>
-              </td>
-              <td className="px-3 py-2 text-muted">{s.schedule}</td>
-              <td className="px-3 py-2 text-right font-mono text-ink">
-                {s.rowsToday.toLocaleString()}
-              </td>
-              <td className="px-3 py-2 font-mono text-muted">{s.lastSync}</td>
-              <td className="px-3 py-2 text-[11px] text-muted">
-                {s.tables.join(", ")}
-              </td>
-            </tr>
-          ))}
+        <tbody>
+          {SOURCES.map((s) => {
+            const isOpen = open === s.id;
+            return (
+              <Fragment key={s.id}>
+                <tr
+                  onClick={() => setOpen(isOpen ? null : s.id)}
+                  className="cursor-pointer border-b border-line/40 align-middle hover:bg-surface2/40"
+                  style={{ minHeight: 44 }}
+                >
+                  <td className="py-3 pr-3 font-mono text-ink">{s.id}</td>
+                  <td className="py-3 pr-3 font-mono text-muted">{s.sourceKind}</td>
+                  <td className="py-3 pr-3 font-mono text-muted">{s.cadence}</td>
+                  <td className="py-3 pr-3 text-right font-mono text-ink">
+                    {s.rowsPerDay.toLocaleString()}
+                  </td>
+                  <td className="py-3 pr-3">
+                    <FreshnessSpark series={s.freshness7d} />
+                  </td>
+                  <td className="py-3 pr-3">
+                    <BulletErr pct={s.errorPct} threshold={s.errorThresholdPct} />
+                  </td>
+                  <td className="py-3 pr-3 text-right font-mono text-ink">
+                    {s.errorPct.toFixed(1)}
+                  </td>
+                  <td className="py-3">
+                    <StatusDot status={s.status} />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-line/40 bg-surface/60">
+                    <td colSpan={8} className="px-1 py-3">
+                      <div className="grid gap-3 text-[11px] md:grid-cols-4">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted">
+                            vendor
+                          </div>
+                          <div className="font-mono text-ink">{s.vendor}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted">
+                            schema
+                          </div>
+                          <div className="font-mono text-ink">{s.schema}</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted">
+                            last sync
+                          </div>
+                          <div className="font-mono text-ink num">
+                            {formatAgo(s.lastSyncSecondsAgo)} ago
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted">
+                            tables
+                          </div>
+                          <div className="font-mono text-ink">
+                            {s.tables.join(", ")}
+                          </div>
+                        </div>
+                        <div className="md:col-span-4">
+                          <div className="text-[10px] uppercase tracking-wider text-muted">
+                            notes
+                          </div>
+                          <div className="text-muted">{s.notes}</div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function MartHighlights() {
+// ───────────────────────────────────────────────────────────────────────────
+// 4. Lineage graph
+// ───────────────────────────────────────────────────────────────────────────
+
+function matSuffix(m: Model["materialization"]) {
+  return m === "incremental" ? ".inc" : m === "table" ? ".tbl" : m === "view" ? ".view" : ".eph";
+}
+
+function LineageGraph() {
+  const [focus, setFocus] = useState<string | null>(null);
+
+  const layers = useMemo(() => {
+    const g: Record<string, Model[]> = { staging: [], intermediate: [], marts: [] };
+    for (const m of MODELS) g[m.layer].push(m);
+    return g;
+  }, []);
+
+  // Compute related set for focused node (ancestors + descendants)
+  const related = useMemo(() => {
+    if (!focus) return null;
+    const up = new Set<string>();
+    const down = new Set<string>();
+    const stackUp = [focus];
+    while (stackUp.length) {
+      const node = stackUp.pop()!;
+      for (const e of LINEAGE) {
+        if (e.to === node && !up.has(e.from)) {
+          up.add(e.from);
+          stackUp.push(e.from);
+        }
+      }
+    }
+    const stackDown = [focus];
+    while (stackDown.length) {
+      const node = stackDown.pop()!;
+      for (const e of LINEAGE) {
+        if (e.from === node && !down.has(e.to)) {
+          down.add(e.to);
+          stackDown.push(e.to);
+        }
+      }
+    }
+    const all = new Set<string>([focus, ...up, ...down]);
+    return all;
+  }, [focus]);
+
+  const isDim = (id: string) => related !== null && !related.has(id);
+
   return (
-    <div className="grid gap-3 md:grid-cols-3">
-      {HIGHLIGHT_MARTS.map((m) => (
-        <Card key={m.id} className="flex flex-col gap-3">
-          <div>
-            <div className="font-mono text-xs text-flame">{m.name}</div>
-            <p className="mt-1 text-xs text-muted">{m.description}</p>
-          </div>
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
-              Columns
+    <div>
+      <div className="space-y-4">
+        {(["staging", "intermediate", "marts"] as const).map((layer) => (
+          <div key={layer}>
+            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted">
+              {layer}
             </div>
-            <ul className="divide-y divide-line/60 rounded-md border border-line">
-              {m.columns.map((c) => (
-                <li
-                  key={c.name}
-                  className="flex items-baseline justify-between gap-2 px-2 py-1 text-[11px]"
-                >
-                  <span className="font-mono text-ink">{c.name}</span>
-                  <span className="font-mono text-muted">{c.type}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
-              Used by
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {m.usedBy.map((u) => (
-                <span
-                  key={u}
-                  className="rounded border border-line bg-surface2 px-1.5 py-0.5 font-mono text-[10px] text-ink"
-                >
-                  {u}
-                </span>
-              ))}
+            <div className="flex flex-wrap gap-1.5">
+              {layers[layer].map((m) => {
+                const focused = focus === m.id;
+                const dim = isDim(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setFocus(focused ? null : m.id)}
+                    className={`rounded border px-2 py-1 font-mono text-[11px] transition ${
+                      focused
+                        ? "border-ice bg-ice/10 text-ice"
+                        : "border-line bg-surface text-ink hover:border-muted"
+                    } ${dim ? "opacity-40" : ""}`}
+                    style={{ minHeight: 28 }}
+                  >
+                    {m.name}
+                    <span className="ml-1 text-[10px] text-muted">
+                      {matSuffix(m.materialization)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </Card>
-      ))}
+        ))}
+      </div>
+      <div className="mt-3 text-[10px] text-muted">
+        tap a model to highlight its upstream and downstream chain · {LINEAGE.length} edges
+      </div>
     </div>
   );
 }
 
-function LineageList() {
+// ───────────────────────────────────────────────────────────────────────────
+// 5. Marts (small multiples)
+// ───────────────────────────────────────────────────────────────────────────
+
+function MartsGrid() {
   return (
-    <div className="rounded-lg border border-line bg-surface p-3">
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted">
-        Lineage edges ({LINEAGE.length})
-      </div>
-      <ul className="grid gap-1 md:grid-cols-2">
-        {LINEAGE.map((e, i) => (
-          <li
-            key={i}
-            className="flex items-center gap-2 font-mono text-[11px] text-ink"
+    <div className="grid gap-3 md:grid-cols-3">
+      {HIGHLIGHT_MARTS.map((m) => {
+        const cols = MART_SCHEMA_SNIPPETS[m.name] ?? [];
+        return (
+          <div
+            key={m.id}
+            className="border border-line bg-surface p-3"
           >
-            <span>{e.from}</span>
-            <span className="text-flame">→</span>
-            <span>{e.to}</span>
-          </li>
-        ))}
-      </ul>
+            <div className="font-mono text-[12px] uppercase tracking-wider text-ink">
+              {m.name}
+            </div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+              <dt className="text-muted">grain</dt>
+              <dd className="text-right font-mono text-ink">{m.grain}</dd>
+              <dt className="text-muted">mat</dt>
+              <dd className="text-right font-mono text-ink">{m.materialization}</dd>
+              <dt className="text-muted">refresh</dt>
+              <dd className="text-right font-mono text-ink num">{m.refreshCadence}</dd>
+              <dt className="text-muted">rows</dt>
+              <dd className="text-right font-mono text-ink num">
+                {m.rowCount.toLocaleString()}
+              </dd>
+            </dl>
+            <div className="mt-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted">schema</div>
+              <table className="mt-1 w-full text-[11px]">
+                <tbody>
+                  {cols.map((c) => (
+                    <tr key={c.col} className="border-b border-line/40 last:border-0">
+                      <td className="py-1 font-mono text-ink">{c.col}</td>
+                      <td className="py-1 text-right font-mono text-muted">{c.type}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted">consumed</div>
+              <div className="mt-1 flex flex-wrap gap-1 font-mono text-[11px] text-ink">
+                {m.usedBy.map((u) => (
+                  <span key={u}>{u}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// 6. End-to-end timing (small-multiple bullet graphs)
+// ───────────────────────────────────────────────────────────────────────────
+
+function TimingBullets() {
+  const scaleMax = Math.max(...END_TO_END_TIMING.map((t) => Math.max(t.actualSeconds, t.targetSeconds))) * 1.15;
+  return (
+    <div className="border-t border-b border-line/60 py-3">
+      <div className="space-y-2">
+        {END_TO_END_TIMING.map((t) => (
+          <div key={t.stage} className="grid grid-cols-[120px_1fr_64px] items-center gap-3 text-[11px]">
+            <div className="font-mono text-muted">{t.label}</div>
+            <BulletTiming
+              actual={t.actualSeconds}
+              target={t.targetSeconds}
+              scaleMax={scaleMax}
+            />
+            <div className="text-right font-mono text-ink num">
+              {t.actualSeconds}s
+              <span className="ml-1 text-muted">/ {t.targetSeconds}s</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-[10px] text-muted">
+        bar = actual · tick = target · shared x-scale {Math.round(scaleMax)}s
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 8. Code receipts
+// ───────────────────────────────────────────────────────────────────────────
+
+function CodeReceipt({
+  label,
+  body,
+}: {
+  label: string;
+  body: string;
+}) {
+  return (
+    <details className="border border-line bg-surface">
+      <summary
+        className="cursor-pointer list-none px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-muted hover:text-ink"
+        style={{ minHeight: 44 }}
+      >
+        <span className="text-ink">›</span> {label}
+      </summary>
+      <pre className="overflow-x-auto border-t border-line/60 p-3 font-mono text-[11px] leading-snug text-ink">
+        <code>{body}</code>
+      </pre>
+    </details>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Header strip
+// ───────────────────────────────────────────────────────────────────────────
+
+function HeaderStrip() {
+  return (
+    <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.25em] text-muted">
+          Data Engineering Lifecycle / NBA 2K26 ODI
+        </div>
+        <h1 className="mt-1 font-display text-6xl leading-none tracking-wide text-ink md:text-7xl">
+          STACK
+        </h1>
+        <p className="mt-2 max-w-xl text-sm text-muted">
+          Six sources, three marts, end-to-end latency 4 min p95.
+        </p>
+      </div>
+      <div className="flex gap-6 md:gap-8">
+        <StatLine label="latency p95" value="4m" />
+        <StatLine label="sources" value={String(PIPELINE_STATS.sources)} />
+        <StatLine
+          label="rows/day"
+          value={`${Math.round(PIPELINE_STATS.dailyRowsIngested / 1000)}k`}
+        />
+      </div>
+    </header>
+  );
+}
+
+function StatLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="font-display text-3xl leading-none text-ink num md:text-4xl">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Lifecycle strip
+// ───────────────────────────────────────────────────────────────────────────
+
+function LifecycleStrip() {
+  return (
+    <div className="relative">
+      <div className="absolute left-0 right-0 top-[14px] hidden h-px bg-line md:block" aria-hidden />
+      <ol className="relative grid gap-3 md:grid-cols-5">
+        {LIFECYCLE_STAGES.map((s) => (
+          <li key={s.n} className="relative bg-bg md:px-2">
+            <div className="flex items-center gap-2">
+              <span className="font-display text-2xl leading-none text-ink num">
+                {s.n}
+              </span>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-ink">
+                {s.stage}
+              </span>
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-muted">{s.system}</div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Section heading (lean, no chrome)
+// ───────────────────────────────────────────────────────────────────────────
+
+function H({
+  n,
+  title,
+  hint,
+}: {
+  n: string;
+  title: string;
+  hint?: string;
+}) {
+  return (
+    <div className="mb-3 flex items-baseline gap-3 border-t border-line/60 pt-4">
+      <span className="font-mono text-[11px] text-muted num">{n}</span>
+      <h2 className="font-display text-2xl leading-none tracking-wide text-ink md:text-3xl">
+        {title}
+      </h2>
+      {hint && <span className="text-[11px] text-muted">{hint}</span>}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Page
+// ───────────────────────────────────────────────────────────────────────────
 
 export default function StackPage() {
   return (
-    <div className="space-y-10">
-      <header>
-        <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-flame">
-          2K Lab · Reference architecture
+    <div className="space-y-8">
+      <HeaderStrip />
+
+      <section>
+        <H n="01" title="lifecycle" hint="generation → ingestion → storage → transformation → serving" />
+        <LifecycleStrip />
+      </section>
+
+      <section>
+        <H
+          n="02"
+          title="sources"
+          hint={`${SOURCES.length} connectors · tap row for detail`}
+        />
+        <SourcesBoxScore />
+      </section>
+
+      <section>
+        <H n="03" title="lineage" hint={`${MODELS.length} models · ${LINEAGE.length} edges`} />
+        <LineageGraph />
+      </section>
+
+      <section>
+        <H n="04" title="marts" hint="schema · grain · refresh · consumers" />
+        <MartsGrid />
+      </section>
+
+      <section>
+        <H n="05" title="timing" hint="seconds per stage · bar=actual · tick=target" />
+        <TimingBullets />
+      </section>
+
+      <section>
+        <H n="06" title="undercurrents" />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
+          {UNDERCURRENTS.map((u, i) => (
+            <span key={u} className="font-mono">
+              {u}
+              {i < UNDERCURRENTS.length - 1 && (
+                <span className="ml-2 text-line">·</span>
+              )}
+            </span>
+          ))}
         </div>
-        <h1 className="mt-1 font-display text-5xl leading-none tracking-wide text-ink md:text-6xl">
-          Stack
-        </h1>
-        <p className="mt-2 max-w-xl text-sm text-muted">
-          How Pulse is built: Fivetran &rarr; Snowflake &rarr; dbt &rarr; Next.js.
-        </p>
-      </header>
+      </section>
 
-      <Section title="Pipeline" subtitle="End-to-end counts across today's run window.">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-          <Stat label="Sources" value={PIPELINE_STATS.sources} tone="flame" />
-          <Stat
-            label="Tables ingested"
-            value={PIPELINE_STATS.tablesIngested}
-          />
-          <Stat label="dbt models" value={PIPELINE_STATS.models} tone="ice" />
-          <Stat
-            label="Rows / day"
-            value={PIPELINE_STATS.dailyRowsIngested.toLocaleString()}
-            tone="gold"
-          />
-          <Stat
-            label="Latency p50 / p95"
-            value={`${PIPELINE_STATS.latencyMinutesP50}m / ${PIPELINE_STATS.latencyMinutesP95}m`}
-            hint="source row to mart"
-            tone="lime"
-          />
+      <section>
+        <H n="07" title="receipts" hint="tap to expand" />
+        <div className="space-y-2">
+          <CodeReceipt label="fivetran/balldontlie/connector.py · update()" body={CONNECTOR_PY} />
+          <CodeReceipt label="dbt/marts/mart_rating_predictions.sql" body={MART_SQL} />
+          <CodeReceipt label="app/pulse/page.tsx" body={PULSE_TSX} />
         </div>
-      </Section>
+      </section>
 
-      <Section
-        title="Architecture"
-        subtitle="Four hops: extract, land, model, serve."
-      >
-        <Card>
-          <ArchDiagram />
-        </Card>
-      </Section>
-
-      <Section
-        title="Sources"
-        subtitle="Six SDK connectors and one native Snowflake meta connector."
-      >
-        <SourcesTable />
-      </Section>
-
-      <Section title="dbt models" subtitle="Click a layer to expand.">
-        <ModelsTree />
-        <div className="mt-3">
-          <LineageList />
-        </div>
-      </Section>
-
-      <Section
-        title="Key marts"
-        subtitle="The three marts the front-end reads from."
-      >
-        <MartHighlights />
-      </Section>
-
-      <Section title="Code" subtitle="Slices of the actual files in this repo.">
-        <CodeTabs />
-      </Section>
-
-      <footer className="border-t border-line pt-4 text-xs text-muted">
-        Repo scaffolded with Claude Code in 9 parallel agents.
+      <footer className="border-t border-line/60 pt-4 font-mono text-[10px] text-muted">
+        Repo: github.com/fivetran-jasonchletsos/2K_BB_Demo · Scaffolded with Claude Code · Sources audited 2026-05-16
       </footer>
     </div>
   );

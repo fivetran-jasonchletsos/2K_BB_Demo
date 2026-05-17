@@ -809,6 +809,69 @@ export function tierCounts(list: Badge[] = BADGES): Record<BadgeTier, number> {
   );
 }
 
+// ── Tier list serialization ────────────────────────────────────────────────
+// Format:
+//   2K LAB tier list (NBA 2K26 1.7)
+//   S: Clamps, Deadeye, Quickdraw
+//   A: Dimer, Challenger
+//   B: ...
+//   C: ...
+//   D: ...
+
+export const TIER_LIST_PATCH = "1.7";
+const TIER_LIST_HEADER = `2K LAB tier list (NBA 2K26 ${TIER_LIST_PATCH})`;
+const ALL_TIERS: BadgeTier[] = ["S", "A", "B", "C", "D"];
+
+export function serializeTierList(
+  personalTiers: Record<string, BadgeTier>,
+  mode: "diff" | "full" = "diff"
+): string {
+  const buckets: Record<BadgeTier, string[]> = { S: [], A: [], B: [], C: [], D: [] };
+
+  for (const badge of BADGES) {
+    const personal = personalTiers[badge.id];
+    if (mode === "diff") {
+      if (!personal || personal === badge.tier) continue;
+      buckets[personal].push(badge.name);
+    } else {
+      const tier = personal ?? badge.tier;
+      buckets[tier].push(badge.name);
+    }
+  }
+
+  const lines = [TIER_LIST_HEADER];
+  for (const t of ALL_TIERS) {
+    if (buckets[t].length === 0) {
+      lines.push(`${t}:`);
+    } else {
+      lines.push(`${t}: ${buckets[t].join(", ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export function parseTierList(input: string): Record<string, BadgeTier> {
+  const result: Record<string, BadgeTier> = {};
+  const byName = new Map<string, Badge>();
+  for (const badge of BADGES) byName.set(badge.name.toLowerCase(), badge);
+
+  const lines = input.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^([SABCD])\s*:\s*(.*)$/i);
+    if (!m) continue;
+    const tier = m[1].toUpperCase() as BadgeTier;
+    const names = m[2].split(",").map((n) => n.trim()).filter(Boolean);
+    for (const n of names) {
+      const badge = byName.get(n.toLowerCase());
+      if (!badge) continue; // gracefully ignore unknown badge names
+      result[badge.id] = tier;
+    }
+  }
+  return result;
+}
+
 export const PATCH_NOTES: { patch: string; date: string; summary: string; changes: string[] }[] = [
   {
     patch: "1.7",

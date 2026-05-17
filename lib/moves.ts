@@ -989,3 +989,65 @@ export function decodeCombo(code: string): string[] {
     return [];
   }
 }
+
+// ---- Active combo (localStorage) ------------------------------------------
+
+export type ActiveCombo = {
+  moveIds: string[];
+  timingNote?: string | null;
+  updatedAt: number;
+};
+
+const ACTIVE_COMBO_KEY = "2klab.activeCombo";
+const COMBO_REPS_KEY = "2klab.comboReps";
+
+export function getActiveCombo(): ActiveCombo | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_COMBO_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveCombo;
+    if (!parsed || !Array.isArray(parsed.moveIds)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveCombo(combo: ActiveCombo | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!combo || combo.moveIds.length === 0) {
+      window.localStorage.removeItem(ACTIVE_COMBO_KEY);
+      return;
+    }
+    window.localStorage.setItem(ACTIVE_COMBO_KEY, JSON.stringify(combo));
+  } catch {}
+}
+
+export function getComboReps(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(COMBO_REPS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, number>;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function setComboReps(reps: Record<string, number>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COMBO_REPS_KEY, JSON.stringify(reps));
+  } catch {}
+}
+
+export function bumpComboReps(comboId: string, by = 1): Record<string, number> {
+  const reps = getComboReps();
+  reps[comboId] = (reps[comboId] ?? 0) + by;
+  setComboReps(reps);
+  return reps;
+}

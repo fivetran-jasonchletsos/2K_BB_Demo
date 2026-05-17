@@ -4,6 +4,9 @@
 // a demo environment — they are not pulled from a live system.
 
 export type ConnectorKind = "sdk" | "native";
+export type SourceKind = "rest" | "scrape" | "oauth" | "json";
+export type Cadence = "5m" | "10m" | "15m" | "30m" | "1h" | "4h" | "daily";
+export type SourceStatus = "green" | "amber" | "red";
 
 export type Source = {
   id: string;
@@ -16,6 +19,15 @@ export type Source = {
   lastSync: string;
   tables: string[];
   notes: string;
+  // Box-score fields
+  sourceKind: SourceKind;
+  cadence: Cadence;
+  rowsPerDay: number;
+  lastSyncSecondsAgo: number;
+  freshness7d: number[]; // length 7; minutes of staleness per day (0 = fresh)
+  errorPct: number; // 0-100
+  errorThresholdPct: number;
+  status: SourceStatus;
 };
 
 export type Materialization = "view" | "table" | "incremental" | "ephemeral";
@@ -27,6 +39,9 @@ export type Model = {
   materialization: Materialization;
   description: string;
   sourcesOrRefs: string[];
+  rowCount: number;
+  grain: string;
+  refreshCadence: string;
 };
 
 export type LineageEdge = {
@@ -40,7 +55,13 @@ export type HighlightMart = {
   description: string;
   columns: { name: string; type: string; note?: string }[];
   usedBy: string[];
+  grain: string;
+  materialization: Materialization;
+  refreshCadence: string;
+  rowCount: number;
 };
+
+export type TimingStage = "extract" | "load" | "staging" | "marts" | "revalidate";
 
 export const SOURCES: Source[] = [
   {
@@ -55,6 +76,14 @@ export const SOURCES: Source[] = [
     tables: ["players", "teams", "games", "stats", "season_averages"],
     notes:
       "REST API. API key in connector config. Cursor on `updated_at` for stats, on `date` for games.",
+    sourceKind: "rest",
+    cadence: "15m",
+    rowsPerDay: 184200,
+    lastSyncSecondsAgo: 47,
+    freshness7d: [0, 0, 2, 0, 0, 1, 0],
+    errorPct: 0.2,
+    errorThresholdPct: 1.0,
+    status: "green",
   },
   {
     id: "nba_stats",
@@ -68,6 +97,14 @@ export const SOURCES: Source[] = [
     tables: ["box_scores", "play_by_play", "lineups", "shot_chart_detail"],
     notes:
       "Requires browser-like headers (User-Agent, Referer, x-nba-stats-token). Rate-limited; backoff on 429.",
+    sourceKind: "scrape",
+    cadence: "30m",
+    rowsPerDay: 61120,
+    lastSyncSecondsAgo: 738,
+    freshness7d: [0, 3, 0, 8, 0, 2, 4],
+    errorPct: 0.9,
+    errorThresholdPct: 1.0,
+    status: "amber",
   },
   {
     id: "reddit_2k",
@@ -81,6 +118,14 @@ export const SOURCES: Source[] = [
     tables: ["posts", "comments"],
     notes:
       "OAuth2 application-only script auth (client_id + client_secret + refresh_token). Subreddits: NBA2k, NBA2k26.",
+    sourceKind: "oauth",
+    cadence: "10m",
+    rowsPerDay: 12840,
+    lastSyncSecondsAgo: 182,
+    freshness7d: [0, 0, 0, 1, 0, 0, 0],
+    errorPct: 0.1,
+    errorThresholdPct: 1.0,
+    status: "green",
   },
   {
     id: "twokratings",
@@ -94,6 +139,14 @@ export const SOURCES: Source[] = [
     tables: ["player_ratings", "rating_history"],
     notes:
       "Community-curated. HTML scrape with BeautifulSoup. Treated as advisory ground-truth, not official 2K data.",
+    sourceKind: "scrape",
+    cadence: "daily",
+    rowsPerDay: 540,
+    lastSyncSecondsAgo: 15069,
+    freshness7d: [0, 0, 0, 0, 0, 0, 0],
+    errorPct: 0.0,
+    errorThresholdPct: 2.0,
+    status: "green",
   },
   {
     id: "espn_news",
@@ -107,6 +160,14 @@ export const SOURCES: Source[] = [
     tables: ["articles", "headlines"],
     notes:
       "Public ESPN JSON endpoints. Cursor on `published`. Filters to NBA league.",
+    sourceKind: "json",
+    cadence: "5m",
+    rowsPerDay: 3120,
+    lastSyncSecondsAgo: 74,
+    freshness7d: [0, 0, 0, 0, 1, 0, 0],
+    errorPct: 0.3,
+    errorThresholdPct: 1.0,
+    status: "green",
   },
   {
     id: "locker_codes",
@@ -120,6 +181,14 @@ export const SOURCES: Source[] = [
     tables: ["drops"],
     notes:
       "Aggregator JSON endpoint. Codes have expires_at; rewards typed (player_card, mt, vc, badge).",
+    sourceKind: "json",
+    cadence: "5m",
+    rowsPerDay: 70,
+    lastSyncSecondsAgo: 158,
+    freshness7d: [0, 0, 14, 0, 0, 0, 22],
+    errorPct: 1.4,
+    errorThresholdPct: 1.0,
+    status: "red",
   },
   {
     id: "snowflake_internal",
@@ -133,6 +202,14 @@ export const SOURCES: Source[] = [
     tables: ["warehouse_load_history", "query_history_summary"],
     notes:
       "Native Fivetran connector. Used for pipeline observability dashboards (not in core lineage).",
+    sourceKind: "rest",
+    cadence: "1h",
+    rowsPerDay: 2304,
+    lastSyncSecondsAgo: 1624,
+    freshness7d: [0, 0, 0, 0, 0, 0, 0],
+    errorPct: 0.0,
+    errorThresholdPct: 1.0,
+    status: "green",
   },
 ];
 
@@ -145,6 +222,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "Game-level facts from balldontlie /games. Soft-delete filtered.",
     sourcesOrRefs: ["source('nba_balldontlie','games')"],
+    rowCount: 12480,
+    grain: "one row per game",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_nba__players",
@@ -153,6 +233,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "Player roster: id, name, team, position, height_in, weight_lb.",
     sourcesOrRefs: ["source('nba_balldontlie','players')"],
+    rowCount: 624,
+    grain: "one row per player",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_nba__player_stats",
@@ -164,6 +247,9 @@ export const MODELS: Model[] = [
       "source('nba_balldontlie','stats')",
       "source('nba_balldontlie','games')",
     ],
+    rowCount: 312840,
+    grain: "one row per player-game",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_reddit__posts",
@@ -172,6 +258,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "Subreddit posts cleaned, with lowercased title+body.",
     sourcesOrRefs: ["source('reddit_2k','posts')"],
+    rowCount: 41208,
+    grain: "one row per post",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_espn__news",
@@ -180,6 +269,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "ESPN NBA articles with normalized published timestamp.",
     sourcesOrRefs: ["source('espn_news','articles')"],
+    rowCount: 9870,
+    grain: "one row per article",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_twokratings__ratings",
@@ -188,6 +280,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "Community 2K ratings keyed by player slug; deduped to latest scrape.",
     sourcesOrRefs: ["source('twokratings','player_ratings')"],
+    rowCount: 612,
+    grain: "one row per player",
+    refreshCadence: "on-read",
   },
   {
     id: "stg_locker_codes__drops",
@@ -196,6 +291,9 @@ export const MODELS: Model[] = [
     materialization: "view",
     description: "Locker code drops with reward type and expiration parsed to TIMESTAMP_TZ.",
     sourcesOrRefs: ["source('locker_codes','drops')"],
+    rowCount: 184,
+    grain: "one row per drop",
+    refreshCadence: "on-read",
   },
 
   // intermediate
@@ -207,6 +305,9 @@ export const MODELS: Model[] = [
     description:
       "Per-player rolling last-5 and last-30d averages for PTS/REB/AST/MIN/PLUS_MINUS using QUALIFY window.",
     sourcesOrRefs: ["ref('stg_nba__player_stats')"],
+    rowCount: 624,
+    grain: "one row per player",
+    refreshCadence: "every 30m",
   },
   {
     id: "int_player_news_signal",
@@ -220,6 +321,9 @@ export const MODELS: Model[] = [
       "ref('stg_espn__news')",
       "ref('stg_nba__players')",
     ],
+    rowCount: 624,
+    grain: "one row per player",
+    refreshCadence: "every 15m",
   },
 
   // marts
@@ -236,6 +340,9 @@ export const MODELS: Model[] = [
       "ref('int_player_news_signal')",
       "ref('stg_twokratings__ratings')",
     ],
+    rowCount: 624,
+    grain: "one row per player",
+    refreshCadence: "every 15m",
   },
   {
     id: "mart_rating_predictions",
@@ -245,6 +352,9 @@ export const MODELS: Model[] = [
     description:
       "Predicted 2K rating delta with confidence + primary driver. Clamped to [-5,+5].",
     sourcesOrRefs: ["ref('mart_player_360')"],
+    rowCount: 624,
+    grain: "one row per player",
+    refreshCadence: "every 15m",
   },
   {
     id: "mart_locker_codes_active",
@@ -254,6 +364,9 @@ export const MODELS: Model[] = [
     description:
       "Currently-active locker codes ranked by expiration window. Filters expired drops.",
     sourcesOrRefs: ["ref('stg_locker_codes__drops')"],
+    rowCount: 42,
+    grain: "one row per active code",
+    refreshCadence: "on-read",
   },
 ];
 
@@ -297,6 +410,10 @@ export const HIGHLIGHT_MARTS: HighlightMart[] = [
       { name: "updated_at", type: "TIMESTAMP_TZ" },
     ],
     usedBy: ["/players", "/pulse", "mart_rating_predictions"],
+    grain: "one row per player",
+    materialization: "incremental",
+    refreshCadence: "every 15m",
+    rowCount: 624,
   },
   {
     id: "mart_rating_predictions",
@@ -313,6 +430,10 @@ export const HIGHLIGHT_MARTS: HighlightMart[] = [
       { name: "computed_at", type: "TIMESTAMP_TZ" },
     ],
     usedBy: ["/pulse", "/players/[id]"],
+    grain: "one row per player",
+    materialization: "incremental",
+    refreshCadence: "every 15m",
+    rowCount: 624,
   },
   {
     id: "mart_locker_codes_active",
@@ -328,6 +449,10 @@ export const HIGHLIGHT_MARTS: HighlightMart[] = [
       { name: "rank_by_expiry", type: "NUMBER" },
     ],
     usedBy: ["/codes"],
+    grain: "one row per active code",
+    materialization: "view",
+    refreshCadence: "on-read",
+    rowCount: 42,
   },
 ];
 
@@ -339,3 +464,70 @@ export const PIPELINE_STATS = {
   latencyMinutesP50: 7,
   latencyMinutesP95: 22,
 };
+
+// End-to-end timing across the lifecycle stages. Seconds.
+export const END_TO_END_TIMING: {
+  stage: TimingStage;
+  label: string;
+  actualSeconds: number;
+  targetSeconds: number;
+}[] = [
+  { stage: "extract", label: "source extract", actualSeconds: 42, targetSeconds: 60 },
+  { stage: "load", label: "load to raw", actualSeconds: 28, targetSeconds: 45 },
+  { stage: "staging", label: "staging build", actualSeconds: 51, targetSeconds: 60 },
+  { stage: "marts", label: "mart build", actualSeconds: 88, targetSeconds: 90 },
+  { stage: "revalidate", label: "app revalidate", actualSeconds: 31, targetSeconds: 30 },
+];
+
+// Mart column snippets (4-6 cols each) for the three highlight marts.
+export const MART_SCHEMA_SNIPPETS: Record<
+  string,
+  { col: string; type: string; note?: string }[]
+> = {
+  mart_player_360: [
+    { col: "player_id", type: "NUMBER", note: "PK" },
+    { col: "full_name", type: "STRING" },
+    { col: "form_z", type: "FLOAT", note: "z-score" },
+    { col: "current_2k_rating", type: "NUMBER" },
+    { col: "news_score", type: "FLOAT" },
+    { col: "updated_at", type: "TIMESTAMP_TZ" },
+  ],
+  mart_rating_predictions: [
+    { col: "player_id", type: "NUMBER", note: "PK" },
+    { col: "current_rating", type: "NUMBER" },
+    { col: "predicted_delta", type: "NUMBER(3,1)" },
+    { col: "confidence", type: "FLOAT" },
+    { col: "primary_driver", type: "STRING" },
+    { col: "computed_at", type: "TIMESTAMP_TZ" },
+  ],
+  mart_locker_codes_active: [
+    { col: "code", type: "STRING", note: "PK" },
+    { col: "reward_type", type: "STRING" },
+    { col: "reward_value", type: "STRING" },
+    { col: "expires_at", type: "TIMESTAMP_TZ" },
+    { col: "hours_remaining", type: "NUMBER(6,1)" },
+    { col: "rank_by_expiry", type: "NUMBER" },
+  ],
+};
+
+// Joe Reis data engineering lifecycle stages used in the header strip.
+export const LIFECYCLE_STAGES: {
+  n: number;
+  stage: string;
+  system: string;
+}[] = [
+  { n: 1, stage: "generation", system: "balldontlie · NBA.com · Reddit · ESPN · 2KRatings · codes" },
+  { n: 2, stage: "ingestion", system: "Fivetran Connector SDK" },
+  { n: 3, stage: "storage", system: "Snowflake RAW schemas" },
+  { n: 4, stage: "transformation", system: "dbt — staging / intermediate / marts" },
+  { n: 5, stage: "serving", system: "Next.js App Router (ISR)" },
+];
+
+export const UNDERCURRENTS = [
+  "orchestration",
+  "data management",
+  "dataops",
+  "security",
+  "software engineering",
+  "data architecture",
+];

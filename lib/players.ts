@@ -191,7 +191,7 @@ export const PLAYERS: Player[] = [
   {
     id: "luka",
     firstName: "Luka", lastName: "Doncic", displayName: "Luka Doncic",
-    team: "LAL", position: "PG", height: "6'7\"", weightLb: 230, age: 27,
+    team: "DAL", position: "PG", height: "6'7\"", weightLb: 230, age: 27,
     rating2k: 96, ratingDelta: -1, archetypeId: "OFFENSIVE_THREAT",
     attributes: a(88, 88, 84, 76, 94, 92, 70, 68, 78, 74, 84, 70),
     badges: [
@@ -401,7 +401,7 @@ export const PLAYERS: Player[] = [
   {
     id: "lillard",
     firstName: "Damian", lastName: "Lillard", displayName: "Damian Lillard",
-    team: "POR", position: "PG", height: "6'2\"", weightLb: 195, age: 36,
+    team: "MIL", position: "PG", height: "6'2\"", weightLb: 195, age: 35,
     rating2k: 88, ratingDelta: -1, archetypeId: "PURE_SHARP",
     attributes: a(92, 84, 78, 60, 88, 84, 64, 50, 50, 76, 70, 60),
     badges: [
@@ -551,7 +551,7 @@ export const PLAYERS: Player[] = [
   {
     id: "butler",
     firstName: "Jimmy", lastName: "Butler", displayName: "Jimmy Butler",
-    team: "GSW", position: "SF", height: "6'7\"", weightLb: 230, age: 36,
+    team: "MIA", position: "SF", height: "6'7\"", weightLb: 230, age: 36,
     rating2k: 89, ratingDelta: 0, archetypeId: "TWO_WAY_SLASHER",
     attributes: a(72, 84, 86, 76, 84, 80, 86, 70, 70, 76, 84, 70),
     badges: [
@@ -596,7 +596,7 @@ export const PLAYERS: Player[] = [
   {
     id: "fox",
     firstName: "De'Aaron", lastName: "Fox", displayName: "De'Aaron Fox",
-    team: "SAC", position: "PG", height: "6'3\"", weightLb: 185, age: 28,
+    team: "SAS", position: "PG", height: "6'3\"", weightLb: 185, age: 28,
     rating2k: 89, ratingDelta: 0, archetypeId: "TWO_WAY_SLASHER",
     attributes: a(78, 82, 90, 80, 88, 82, 78, 56, 56, 96, 70, 84),
     badges: [
@@ -716,7 +716,7 @@ export const PLAYERS: Player[] = [
   {
     id: "lavine",
     firstName: "Zach", lastName: "LaVine", displayName: "Zach LaVine",
-    team: "SAC", position: "SG", height: "6'5\"", weightLb: 200, age: 31,
+    team: "CHI", position: "SG", height: "6'5\"", weightLb: 200, age: 31,
     rating2k: 83, ratingDelta: 0, archetypeId: "OFFENSIVE_THREAT",
     attributes: a(86, 80, 86, 92, 80, 70, 64, 50, 58, 84, 76, 92),
     badges: [
@@ -731,7 +731,7 @@ export const PLAYERS: Player[] = [
   {
     id: "demar",
     firstName: "DeMar", lastName: "DeRozan", displayName: "DeMar DeRozan",
-    team: "SAC", position: "SF", height: "6'6\"", weightLb: 220, age: 36,
+    team: "CHI", position: "SF", height: "6'6\"", weightLb: 220, age: 36,
     rating2k: 84, ratingDelta: 0, archetypeId: "OFFENSIVE_THREAT",
     attributes: a(64, 90, 84, 72, 84, 78, 70, 56, 60, 72, 80, 64),
     badges: [
@@ -1130,6 +1130,134 @@ export function getPlayersByPosition(pos: Position | "All" | "G" | "F" | "C"): P
   if (pos === "F") return PLAYERS.filter((p) => ["SF", "PF", "F"].includes(p.position));
   if (pos === "C") return PLAYERS.filter((p) => p.position === "C");
   return PLAYERS.filter((p) => p.position === pos);
+}
+
+// ---------- MATCHUP CALCULATOR ----------
+
+export type MatchupAttrRow = {
+  key: keyof Attributes;
+  label: string;
+  a: number;
+  b: number;
+  delta: number; // a - b
+};
+
+export type MatchupEdge = {
+  dimension: "Scoring" | "Defense" | "Athleticism" | "Playmaking";
+  aAvg: number;
+  bAvg: number;
+  delta: number; // a - b, rounded
+  winner: "A" | "B" | "EVEN";
+};
+
+export type MatchupBadgeOverlap = {
+  shared: Badge[]; // S/A badges both players have (by name)
+  onlyA: Badge[]; // S/A badges only A has
+  onlyB: Badge[]; // S/A badges only B has
+};
+
+export type MatchupResult = {
+  a: Player;
+  b: Player;
+  ovrDelta: number; // a - b
+  rows: MatchupAttrRow[]; // 12 rows
+  edges: MatchupEdge[];
+  isoAdvantage: { side: "A" | "B" | "EVEN"; pctA: number }; // pctA = predicted A win % in neutral 1v1 ISO
+  formDelta: number; // ratingDelta a - b
+  badges: MatchupBadgeOverlap;
+};
+
+const MATCHUP_ROW_DEFS: { key: keyof Attributes; label: string }[] = [
+  { key: "threePt", label: "3PT" },
+  { key: "midRange", label: "Mid" },
+  { key: "layup", label: "Layup" },
+  { key: "dunk", label: "Dunk" },
+  { key: "ballHandle", label: "Handle" },
+  { key: "pass", label: "Pass" },
+  { key: "perimDef", label: "Perim D" },
+  { key: "intDef", label: "Int D" },
+  { key: "rebound", label: "REB" },
+  { key: "speed", label: "Speed" },
+  { key: "strength", label: "Strength" },
+  { key: "vertical", label: "Vert" },
+];
+
+const SCORING_KEYS: (keyof Attributes)[] = ["threePt", "midRange", "layup", "dunk"];
+const DEFENSE_KEYS: (keyof Attributes)[] = ["perimDef", "intDef", "rebound"];
+const ATHLETIC_KEYS: (keyof Attributes)[] = ["speed", "strength", "vertical"];
+const PLAYMAKING_KEYS: (keyof Attributes)[] = ["ballHandle", "pass"];
+
+function avgAttrs(attr: Attributes, keys: (keyof Attributes)[]): number {
+  const total = keys.reduce((s, k) => s + attr[k], 0);
+  return total / keys.length;
+}
+
+function edge(
+  dimension: MatchupEdge["dimension"],
+  a: Attributes,
+  b: Attributes,
+  keys: (keyof Attributes)[]
+): MatchupEdge {
+  const aAvg = avgAttrs(a, keys);
+  const bAvg = avgAttrs(b, keys);
+  const delta = Math.round(aAvg - bAvg);
+  const winner: MatchupEdge["winner"] =
+    delta === 0 ? "EVEN" : delta > 0 ? "A" : "B";
+  return { dimension, aAvg, bAvg, delta, winner };
+}
+
+// 1v1 ISO neutral-court prediction.
+// Weighted: 50% scoring, 30% playmaking, 20% defense.
+// Each component contributes (aAvg - bAvg) * weight; result clamped 30-85.
+function isoPercent(a: Attributes, b: Attributes): number {
+  const scoring = avgAttrs(a, SCORING_KEYS) - avgAttrs(b, SCORING_KEYS);
+  const playmaking = avgAttrs(a, PLAYMAKING_KEYS) - avgAttrs(b, PLAYMAKING_KEYS);
+  const defense = avgAttrs(a, DEFENSE_KEYS) - avgAttrs(b, DEFENSE_KEYS);
+  // Each rating point of edge -> ~1.5 percentage points.
+  const raw = 50 + (scoring * 0.5 + playmaking * 0.3 + defense * 0.2) * 1.5;
+  return Math.max(30, Math.min(85, Math.round(raw)));
+}
+
+function topTierBadges(p: Player): Badge[] {
+  return p.badges.filter((bd) => bd.tier === "S" || bd.tier === "A");
+}
+
+export function computeMatchup(a: Player, b: Player): MatchupResult {
+  const rows: MatchupAttrRow[] = MATCHUP_ROW_DEFS.map((def) => {
+    const av = a.attributes[def.key];
+    const bv = b.attributes[def.key];
+    return { key: def.key, label: def.label, a: av, b: bv, delta: av - bv };
+  });
+
+  const edges: MatchupEdge[] = [
+    edge("Scoring", a.attributes, b.attributes, SCORING_KEYS),
+    edge("Defense", a.attributes, b.attributes, DEFENSE_KEYS),
+    edge("Playmaking", a.attributes, b.attributes, PLAYMAKING_KEYS),
+    edge("Athleticism", a.attributes, b.attributes, ATHLETIC_KEYS),
+  ];
+
+  const pctA = isoPercent(a.attributes, b.attributes);
+  const isoSide: "A" | "B" | "EVEN" =
+    pctA === 50 ? "EVEN" : pctA > 50 ? "A" : "B";
+
+  const aTop = topTierBadges(a);
+  const bTop = topTierBadges(b);
+  const bNames = new Set(bTop.map((x) => x.name));
+  const aNames = new Set(aTop.map((x) => x.name));
+  const shared = aTop.filter((x) => bNames.has(x.name));
+  const onlyA = aTop.filter((x) => !bNames.has(x.name));
+  const onlyB = bTop.filter((x) => !aNames.has(x.name));
+
+  return {
+    a,
+    b,
+    ovrDelta: a.rating2k - b.rating2k,
+    rows,
+    edges,
+    isoAdvantage: { side: isoSide, pctA },
+    formDelta: a.ratingDelta - b.ratingDelta,
+    badges: { shared, onlyA, onlyB },
+  };
 }
 
 // Archetype display labels (matches Build Lab convention).

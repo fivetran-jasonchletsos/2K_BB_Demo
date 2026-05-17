@@ -1057,6 +1057,68 @@ export function recommendedBadges(arche: Archetype, _b: Build): BadgeRec[] {
   return arche.badges.slice(0, 8);
 }
 
+// ---------- compare helpers ----------
+
+export type SubDelta = {
+  key: string;
+  label: string;
+  a: number;
+  b: number;
+  delta: number; // a - b
+};
+
+export type AttributeDiff = Record<AttrGroupKey, SubDelta[]>;
+
+export function diffAttributes(a: AttributeCaps, b: AttributeCaps): AttributeDiff {
+  const out: Partial<AttributeDiff> = {};
+  (Object.keys(a) as AttrGroupKey[]).forEach((k) => {
+    const aSubs = a[k];
+    const bSubs = b[k];
+    const bMap = new Map(bSubs.map((s) => [s.key, s]));
+    out[k] = aSubs.map((sA) => {
+      const sB = bMap.get(sA.key);
+      const bVal = sB?.value ?? 0;
+      return {
+        key: sA.key,
+        label: sA.label,
+        a: sA.value,
+        b: bVal,
+        delta: sA.value - bVal,
+      };
+    });
+  });
+  return out as AttributeDiff;
+}
+
+export function diffVc(a: AttributeCaps, b: AttributeCaps): number {
+  return vcCost(a) - vcCost(b);
+}
+
+export type BadgeOverlap = {
+  shared: BadgeRec[];
+  onlyA: BadgeRec[];
+  onlyB: BadgeRec[];
+};
+
+export function diffBadges(a: BadgeRec[], b: BadgeRec[]): BadgeOverlap {
+  const aNames = new Set(a.map((x) => x.name));
+  const bNames = new Set(b.map((x) => x.name));
+  return {
+    shared: a.filter((x) => bNames.has(x.name)),
+    onlyA: a.filter((x) => !bNames.has(x.name)),
+    onlyB: b.filter((x) => !aNames.has(x.name)),
+  };
+}
+
+export function topAbsDeltas(diff: AttributeDiff, n = 3): SubDelta[] {
+  const flat: SubDelta[] = [];
+  (Object.keys(diff) as AttrGroupKey[]).forEach((k) => flat.push(...diff[k]));
+  return [...flat]
+    .filter((d) => d.delta !== 0)
+    .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+    .slice(0, n);
+}
+
 // ---------- strengths/weaknesses ----------
 
 export function strengthsWeaknesses(

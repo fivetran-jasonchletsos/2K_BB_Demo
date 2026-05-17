@@ -11,6 +11,7 @@ export const ROUTES: { href: string; label: string; sub: string }[] = [
   { href: "/moves", label: "Moves", sub: "Dribbles & combos" },
   { href: "/players", label: "Players", sub: "NBA database" },
   { href: "/scenarios", label: "Scenarios", sub: "Decision trainer" },
+  { href: "/shot-trainer", label: "Shot Lab", sub: "Release timing" },
   { href: "/tips", label: "Secrets", sub: "Hidden mechanics" },
   { href: "/pulse", label: "Pulse", sub: "Live NBA → 2K" },
   { href: "/stack", label: "Stack", sub: "Data pipeline" },

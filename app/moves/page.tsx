@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, Pill, Section, TierBadge } from "@/components/ui";
 import {
   Direction,
@@ -8,10 +8,14 @@ import {
   MOVES,
   MOVE_CATEGORIES,
   Move,
+  bumpComboReps,
   decodeCombo,
   encodeCombo,
+  getActiveCombo,
+  getComboReps,
   getTopMoves,
   moveById,
+  setActiveCombo,
 } from "@/lib/moves";
 
 // ---------------------------------------------------------------------------
@@ -32,13 +36,19 @@ const DIR_ARROW: Record<Direction, string> = {
 function FaceBadge({
   symbol,
   color,
+  size = "sm",
 }: {
   symbol: string;
   color: string; // bg tailwind class
+  size?: "sm" | "lg";
 }) {
+  const cls =
+    size === "lg"
+      ? "h-16 w-16 text-3xl"
+      : "h-7 w-7 text-[13px]";
   return (
     <span
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold leading-none text-white ${color} shadow-card`}
+      className={`inline-flex items-center justify-center rounded-full font-bold leading-none text-white ${color} ${cls} shadow-card`}
       aria-hidden
     >
       {symbol}
@@ -46,42 +56,60 @@ function FaceBadge({
   );
 }
 
-function MonoPill({ children }: { children: React.ReactNode }) {
+function MonoPill({
+  children,
+  size = "sm",
+}: {
+  children: React.ReactNode;
+  size?: "sm" | "lg";
+}) {
+  const cls =
+    size === "lg"
+      ? "h-16 min-w-16 px-3 text-lg"
+      : "h-7 min-w-7 px-2 text-[11px]";
   return (
-    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-line bg-surface2 px-2 font-mono text-[11px] font-semibold text-ink">
+    <span
+      className={`inline-flex items-center justify-center rounded-md border border-line bg-surface2 font-mono font-semibold text-ink ${cls}`}
+    >
       {children}
     </span>
   );
 }
 
-function InputGlyph({ step }: { step: InputStep }) {
+function InputGlyph({
+  step,
+  size = "sm",
+}: {
+  step: InputStep;
+  size?: "sm" | "lg";
+}) {
   const { btn, dir, hold, flick, label } = step;
   const prefix = hold ? "Hold " : flick ? "Flick " : "";
 
   let core: React.ReactNode;
   switch (btn) {
     case "CIRCLE":
-      core = <FaceBadge symbol="●" color="bg-red-500" />;
+      core = <FaceBadge symbol="●" color="bg-red-500" size={size} />;
       break;
     case "CROSS":
-      core = <FaceBadge symbol="✕" color="bg-blue-500" />;
+      core = <FaceBadge symbol="✕" color="bg-blue-500" size={size} />;
       break;
     case "TRIANGLE":
-      core = <FaceBadge symbol="▲" color="bg-lime-500" />;
+      core = <FaceBadge symbol="▲" color="bg-lime-500" size={size} />;
       break;
     case "SQUARE":
-      core = <FaceBadge symbol="■" color="bg-pink-500" />;
+      core = <FaceBadge symbol="■" color="bg-pink-500" size={size} />;
       break;
     case "L1":
     case "L2":
     case "R1":
     case "R2":
-      core = <MonoPill>{btn}</MonoPill>;
+      core = <MonoPill size={size}>{btn}</MonoPill>;
       break;
     case "LS":
     case "RS":
       core = (
-        <MonoPill>
+        <MonoPill size={size}>
           {btn}
           {dir ? DIR_ARROW[dir] : ""}
         </MonoPill>
@@ -92,12 +120,18 @@ function InputGlyph({ step }: { step: InputStep }) {
   return (
     <span className="inline-flex items-center gap-1">
       {prefix && (
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+        <span
+          className={
+            size === "lg"
+              ? "text-xs font-bold uppercase tracking-wider text-muted"
+              : "text-[10px] font-bold uppercase tracking-wider text-muted"
+          }
+        >
           {prefix}
         </span>
       )}
       {core}
-      {label && (
+      {label && size === "sm" && (
         <span className="hidden text-[10px] uppercase tracking-wider text-muted md:inline">
           {label}
         </span>
@@ -152,6 +186,320 @@ type SavedCombo = {
 };
 
 // ---------------------------------------------------------------------------
+// Practice Timer
+// ---------------------------------------------------------------------------
+
+type PracticeProps = {
+  comboName: string;
+  moves: Move[];
+  comboKey: string; // saved combo id, or "active"
+  onClose: () => void;
+  onRepCompleted: (newCount: number) => void;
+  initialReps: number;
+};
+
+function PracticeTimer({
+  comboName,
+  moves,
+  comboKey,
+  onClose,
+  onRepCompleted,
+  initialReps,
+}: PracticeProps) {
+  const [speed, setSpeed] = useState<0.5 | 1 | 1.5>(1);
+  const [countdown, setCountdown] = useState<number | null>(3);
+  const [stepIdx, setStepIdx] = useState(0);
+  const [stepElapsed, setStepElapsed] = useState(0); // ms
+  const [paused, setPaused] = useState(false);
+  const [loop, setLoop] = useState(false);
+  const [reps, setReps] = useState(initialReps);
+  const [done, setDone] = useState(false);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTsRef = useRef<number | null>(null);
+
+  const current = moves[stepIdx];
+  const stepDuration = current ? current.durationMs : 0;
+
+  const clearTick = () => {
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    lastTsRef.current = null;
+  };
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown === null) return;
+    if (paused) return;
+    if (countdown <= 0) {
+      setCountdown(null);
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 800);
+    return () => clearTimeout(t);
+  }, [countdown, paused]);
+
+  // Step timer effect
+  useEffect(() => {
+    if (countdown !== null) return;
+    if (done) return;
+    if (paused) {
+      clearTick();
+      return;
+    }
+    if (!current) return;
+
+    lastTsRef.current = performance.now();
+    tickRef.current = setInterval(() => {
+      const now = performance.now();
+      const last = lastTsRef.current ?? now;
+      const dt = (now - last) * speed;
+      lastTsRef.current = now;
+      setStepElapsed((prev) => {
+        const next = prev + dt;
+        if (next >= stepDuration) {
+          // advance
+          if (stepIdx + 1 < moves.length) {
+            setStepIdx(stepIdx + 1);
+            return 0;
+          }
+          // completed full combo
+          const newReps = reps + 1;
+          setReps(newReps);
+          onRepCompleted(newReps);
+          if (loop) {
+            setStepIdx(0);
+            return 0;
+          }
+          setDone(true);
+          return stepDuration;
+        }
+        return next;
+      });
+    }, 50);
+
+    return () => clearTick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown, paused, stepIdx, speed, loop, done, stepDuration, moves.length]);
+
+  // Cleanup on unmount
+  useEffect(() => clearTick, []);
+
+  const restart = useCallback(() => {
+    clearTick();
+    setStepIdx(0);
+    setStepElapsed(0);
+    setDone(false);
+    setPaused(false);
+    setCountdown(3);
+  }, []);
+
+  const totalMs = moves.reduce((a, m) => a + m.durationMs, 0);
+  const elapsedTotal =
+    moves.slice(0, stepIdx).reduce((a, m) => a + m.durationMs, 0) + stepElapsed;
+  const stepPct = stepDuration > 0 ? Math.min(100, (stepElapsed / stepDuration) * 100) : 0;
+  const totalPct = totalMs > 0 ? Math.min(100, (elapsedTotal / totalMs) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-bg/95 backdrop-blur">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <div>
+          <div className="font-display text-2xl tracking-wide text-ink">Practice</div>
+          <div className="text-xs text-muted">
+            {comboName} · {moves.length} steps · {(totalMs / 1000).toFixed(1)}s
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-md border border-line bg-surface2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-muted hover:text-flame"
+        >
+          Close
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="mx-auto max-w-2xl">
+          {countdown !== null ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-muted">
+                Ready
+              </div>
+              <div className="mt-4 font-display text-9xl leading-none tracking-wide text-flame">
+                {countdown > 0 ? countdown : "GO"}
+              </div>
+            </div>
+          ) : done ? (
+            <div className="flex flex-col items-center gap-4 py-12 text-center">
+              <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-muted">
+                Combo complete
+              </div>
+              <div className="font-display text-6xl tracking-wide text-lime">
+                {reps}
+              </div>
+              <div className="text-sm text-muted">
+                {reps === 1 ? "rep" : "reps"} this session
+              </div>
+              <div className="mt-2 flex flex-col items-center gap-3">
+                <button
+                  onClick={restart}
+                  className="rounded-md border border-flame bg-flame/10 px-5 py-2 text-xs font-bold uppercase tracking-wider text-flame hover:bg-flame/20"
+                >
+                  Run again
+                </button>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={loop}
+                    onChange={(e) => setLoop(e.target.checked)}
+                    className="h-4 w-4 accent-flame"
+                  />
+                  Drill X times (auto-loop)
+                </label>
+              </div>
+            </div>
+          ) : current ? (
+            <>
+              {/* Step indicator — prominent */}
+              <div className="flex items-baseline gap-3">
+                <div className="font-display text-3xl leading-none tracking-wide text-flame md:text-4xl">
+                  Step {stepIdx + 1}
+                </div>
+                <div className="font-display text-xl leading-none tracking-wide text-muted md:text-2xl">
+                  of {moves.length}
+                </div>
+              </div>
+              <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.3em] text-muted">
+                {current.name} · {(stepDuration / 1000).toFixed(1)}s
+              </div>
+              <div className="mt-2 font-display text-3xl tracking-wide text-ink md:text-4xl">
+                {current.name}
+              </div>
+              <div className="mt-0.5 text-xs text-muted">
+                {current.owner} signature · {current.situation}
+              </div>
+
+              {/* Big input glyphs */}
+              <div className="mt-6 rounded-xl border border-line bg-surface p-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  {current.inputs.map((s, i) => (
+                    <span key={i} className="inline-flex items-center gap-3">
+                      <InputGlyph step={s} size="lg" />
+                      {i < current.inputs.length - 1 && (
+                        <span className="text-xl text-muted">·</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step progress */}
+              <div className="mt-5">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted">
+                  <span>Step progress</span>
+                  <span className="font-mono">
+                    {(stepElapsed / 1000).toFixed(1)}s / {(stepDuration / 1000).toFixed(1)}s
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface2">
+                  <div
+                    className="h-full bg-flame transition-[width] duration-75"
+                    style={{ width: `${stepPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Combo progress */}
+              <div className="mt-4">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted">
+                  <span>Combo progress</span>
+                  <span className="font-mono">
+                    {(elapsedTotal / 1000).toFixed(1)}s / {(totalMs / 1000).toFixed(1)}s
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface2">
+                  <div
+                    className="h-full bg-ice transition-[width] duration-75"
+                    style={{ width: `${totalPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Up next */}
+              {stepIdx + 1 < moves.length && (
+                <div className="mt-5 rounded-md border border-dashed border-line bg-surface2/50 p-3 text-xs text-muted">
+                  <span className="text-ink">Next:</span> {moves[stepIdx + 1].name}{" "}
+                  · {(moves[stepIdx + 1].durationMs / 1000).toFixed(1)}s
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Footer controls */}
+      <div className="border-t border-line bg-surface/80 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPaused((p) => !p)}
+              disabled={countdown !== null || done}
+              className="rounded-md border border-flame bg-flame/10 px-4 py-2 text-xs font-bold uppercase tracking-wider text-flame hover:bg-flame/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {paused ? "Resume" : "Pause"}
+            </button>
+            <button
+              onClick={restart}
+              className="rounded-md border border-line bg-surface2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink hover:text-flame"
+            >
+              Restart
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              Speed
+            </span>
+            {([0.5, 1, 1.5] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSpeed(s)}
+                className={`rounded-md border px-3 py-1.5 text-xs font-bold transition ${
+                  speed === s
+                    ? "border-ice bg-ice/10 text-ice"
+                    : "border-line bg-surface2 text-muted hover:text-ink"
+                }`}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={loop}
+              onChange={(e) => setLoop(e.target.checked)}
+              className="h-4 w-4 accent-flame"
+            />
+            Loop
+          </label>
+
+          <div className="font-mono text-xs text-muted">
+            Reps: <span className="text-gold">{reps}</span>
+          </div>
+        </div>
+        <div className="mx-auto mt-2 max-w-2xl text-[10px] uppercase tracking-wider text-muted">
+          Key: {comboKey}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -168,6 +516,18 @@ export default function MovesPage() {
   const [savedCombos, setSavedCombos] = useState<SavedCombo[]>([]);
   const [comboName, setComboName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [comboRestored, setComboRestored] = useState(false);
+  const [reps, setReps] = useState<Record<string, number>>({});
+
+  // Practice state
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [practiceComboKey, setPracticeComboKey] = useState<string>("active");
+  const [practiceMoves, setPracticeMoves] = useState<Move[]>([]);
+  const [practiceName, setPracticeName] = useState("Active combo");
+
+  // Refs to move cards (for scroll-to)
+  const moveRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ---- Load persisted state -------------------------------------------------
   useEffect(() => {
@@ -177,6 +537,13 @@ export default function MovesPage() {
       const c = localStorage.getItem("2klab.combos");
       if (c) setSavedCombos(JSON.parse(c));
     } catch {}
+    const active = getActiveCombo();
+    if (active && active.moveIds.length > 0) {
+      setCombo(active.moveIds);
+      setComboOpen(true);
+    }
+    setComboRestored(true);
+    setReps(getComboReps());
   }, []);
 
   // ---- Persist favorites ----------------------------------------------------
@@ -192,6 +559,13 @@ export default function MovesPage() {
     const t = setTimeout(() => setToast(null), 2000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // ---- Highlight auto-dismiss ----------------------------------------------
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightId(null), 1800);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   // ---- Filter list ----------------------------------------------------------
   const filtered = useMemo(() => {
@@ -228,6 +602,35 @@ export default function MovesPage() {
   );
   const comboMs = comboMoves.reduce((acc, m) => acc + m.durationMs, 0);
   const comboInputs: InputStep[] = comboMoves.flatMap((m) => m.inputs);
+
+  // Recommended timing note based on first move
+  const timingNote = useMemo(() => {
+    if (comboMoves.length === 0) return null;
+    const first = comboMoves[0];
+    if (first.tags.includes("hesi") || first.name.toLowerCase().includes("hesi"))
+      return "Wait for defender to commit before chaining.";
+    if (first.tags.includes("ankle"))
+      return "Sell the first move — defender needs to bite.";
+    if (first.category === "post")
+      return "Establish post position before the first stick input.";
+    if (first.tags.includes("three"))
+      return "Square shoulders before release.";
+    return "Chain the next input as the previous animation completes.";
+  }, [comboMoves]);
+
+  // ---- Persist active combo -------------------------------------------------
+  useEffect(() => {
+    if (!comboRestored) return; // skip first paint before restore
+    if (combo.length === 0) {
+      setActiveCombo(null);
+      return;
+    }
+    setActiveCombo({
+      moveIds: combo,
+      timingNote: timingNote ?? null,
+      updatedAt: Date.now(),
+    });
+  }, [combo, timingNote, comboRestored]);
 
   // ---- Handlers -------------------------------------------------------------
   const toggleFav = (id: string) =>
@@ -302,20 +705,44 @@ export default function MovesPage() {
     setToast("Loaded");
   };
 
-  // Recommended timing note based on first move
-  const timingNote = useMemo(() => {
-    if (comboMoves.length === 0) return null;
-    const first = comboMoves[0];
-    if (first.tags.includes("hesi") || first.name.toLowerCase().includes("hesi"))
-      return "Wait for defender to commit before chaining.";
-    if (first.tags.includes("ankle"))
-      return "Sell the first move — defender needs to bite.";
-    if (first.category === "post")
-      return "Establish post position before the first stick input.";
-    if (first.tags.includes("three"))
-      return "Square shoulders before release.";
-    return "Chain the next input as the previous animation completes.";
-  }, [comboMoves]);
+  const clearCombo = () => {
+    setCombo([]);
+    setActiveCombo(null);
+    setToast("Cleared");
+  };
+
+  const jumpToMove = useCallback((m: Move) => {
+    setCat(m.category);
+    setQuery("");
+    setSizeFilter("ALL");
+    setDiffFilter(0);
+    setReqBadgeOnly(false);
+    setHighlightId(m.id);
+    // Wait for re-render
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = moveRefs.current[m.id];
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    });
+  }, []);
+
+  const startPractice = (
+    moves: Move[],
+    key: string,
+    name: string
+  ) => {
+    if (moves.length < 2) {
+      setToast("Need 2+ moves");
+      return;
+    }
+    setPracticeMoves(moves);
+    setPracticeComboKey(key);
+    setPracticeName(name);
+    setPracticeOpen(true);
+  };
 
   return (
     <main className="min-h-screen bg-bg pb-40 text-ink">
@@ -332,6 +759,53 @@ export default function MovesPage() {
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-6 md:py-8">
+        {/* TOP 10 — promoted above filters */}
+        <div className="mb-6">
+          <div className="mb-2 flex items-end justify-between">
+            <div>
+              <h2 className="font-display text-2xl tracking-wide text-ink">
+                Top 10
+              </h2>
+              <p className="text-xs text-muted">
+                Most-used moves · tap to jump
+              </p>
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+              swipe →
+            </span>
+          </div>
+          <div className="-mx-4 overflow-x-auto px-4 pb-1">
+            <div className="flex w-max gap-2">
+              {topMoves.map((m, i) => (
+                <button
+                  key={m.id}
+                  onClick={() => jumpToMove(m)}
+                  className="flex w-44 shrink-0 flex-col gap-1.5 rounded-lg border border-line bg-surface p-3 text-left transition hover:border-flame hover:shadow-glow"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] text-muted">
+                      #{String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span className="font-mono text-[10px] text-gold">
+                      pop {m.popularity}
+                    </span>
+                  </div>
+                  <div className="font-display text-lg leading-tight tracking-wide text-ink">
+                    {m.name}
+                  </div>
+                  <div className="text-[11px] text-ink">{m.owner}</div>
+                  <div className="line-clamp-1 text-[11px] text-muted">
+                    {m.situation}
+                  </div>
+                  <div className="mt-auto pt-1">
+                    <DiffDots level={m.difficulty} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Category tabs (horizontally scrollable on mobile) */}
         <div className="-mx-4 mb-5 overflow-x-auto px-4">
           <div className="flex w-max gap-2">
@@ -447,82 +921,90 @@ export default function MovesPage() {
           {filtered.map((m) => {
             const isFav = favorites.includes(m.id);
             const inCombo = combo.includes(m.id);
+            const highlighted = highlightId === m.id;
             return (
-              <Card
+              <div
                 key={m.id}
-                className="flex flex-col gap-3 transition hover:border-flame/40"
+                ref={(el) => {
+                  moveRefs.current[m.id] = el;
+                }}
+                className={`rounded-lg transition ${
+                  highlighted ? "ring-2 ring-flame shadow-glow" : ""
+                }`}
               >
-                {/* Top row */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="font-display text-2xl leading-none tracking-wide text-ink">
-                      {m.name}
-                    </h3>
-                    <p className="mt-1 text-xs text-muted">
-                      <span className="text-ink">{m.owner}</span> signature
-                    </p>
+                <Card className="flex flex-col gap-3 transition hover:border-flame/40">
+                  {/* Top row */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-display text-2xl leading-none tracking-wide text-ink">
+                        {m.name}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted">
+                        <span className="text-ink">{m.owner}</span> signature
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleFav(m.id)}
+                      aria-label={isFav ? "Unfavorite" : "Favorite"}
+                      className={`shrink-0 rounded-md border px-2 py-1 text-base transition ${
+                        isFav
+                          ? "border-gold/50 bg-gold/10 text-gold"
+                          : "border-line bg-surface2 text-muted hover:text-gold"
+                      }`}
+                    >
+                      {isFav ? "★" : "☆"}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => toggleFav(m.id)}
-                    aria-label={isFav ? "Unfavorite" : "Favorite"}
-                    className={`shrink-0 rounded-md border px-2 py-1 text-base transition ${
-                      isFav
-                        ? "border-gold/50 bg-gold/10 text-gold"
-                        : "border-line bg-surface2 text-muted hover:text-gold"
-                    }`}
-                  >
-                    {isFav ? "★" : "☆"}
-                  </button>
-                </div>
 
-                {/* Inputs */}
-                <div className="rounded-md border border-line bg-bg/60 p-3">
-                  <InputSequence inputs={m.inputs} />
-                </div>
+                  {/* Inputs */}
+                  <div className="rounded-md border border-line bg-bg/60 p-3">
+                    <InputSequence inputs={m.inputs} />
+                  </div>
 
-                {/* Meta row */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <DiffDots level={m.difficulty} />
-                  <span className="text-muted">·</span>
-                  <span className="font-mono text-muted">
-                    {(m.durationMs / 1000).toFixed(1)}s
-                  </span>
-                  {m.sizeReq && m.sizeReq !== "ANY" && (
-                    <Pill tone="ice">
-                      {m.sizeReq === "G" ? "Guard" : m.sizeReq === "W" ? "Wing" : "Big"}
-                    </Pill>
-                  )}
-                  {m.requiresBadge && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface2 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-ink">
-                      <TierBadge tier={m.requiresBadge.tier} />
-                      <span className="px-1">{m.requiresBadge.badge}</span>
+                  {/* Meta row */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <DiffDots level={m.difficulty} />
+                    <span className="text-muted">·</span>
+                    <span className="font-mono text-muted">
+                      {(m.durationMs / 1000).toFixed(1)}s
                     </span>
-                  )}
-                </div>
+                    {m.sizeReq && m.sizeReq !== "ANY" && (
+                      <Pill tone="ice">
+                        {m.sizeReq === "G" ? "Guard" : m.sizeReq === "W" ? "Wing" : "Big"}
+                      </Pill>
+                    )}
+                    {m.requiresBadge && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface2 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-ink">
+                        <TierBadge tier={m.requiresBadge.tier} />
+                        <span className="px-1">{m.requiresBadge.badge}</span>
+                      </span>
+                    )}
+                  </div>
 
-                {/* Situation */}
-                <p className="text-sm text-muted">
-                  <span className="text-ink">Use:</span> {m.situation}
-                </p>
+                  {/* Situation */}
+                  <p className="text-sm text-muted">
+                    <span className="text-ink">Use:</span> {m.situation}
+                  </p>
 
-                {/* Actions */}
-                <div className="mt-auto flex items-center gap-2">
-                  <button
-                    onClick={() => addToCombo(m.id)}
-                    disabled={inCombo}
-                    className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold uppercase tracking-wider transition ${
-                      inCombo
-                        ? "cursor-not-allowed border-line bg-surface2 text-muted"
-                        : "border-flame bg-flame/10 text-flame hover:bg-flame/20"
-                    }`}
-                  >
-                    {inCombo ? "In Combo" : "+ Add to Combo"}
-                  </button>
-                  <span className="font-mono text-[10px] text-muted">
-                    pop {m.popularity}
-                  </span>
-                </div>
-              </Card>
+                  {/* Actions */}
+                  <div className="mt-auto flex items-center gap-2">
+                    <button
+                      onClick={() => addToCombo(m.id)}
+                      disabled={inCombo}
+                      className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold uppercase tracking-wider transition ${
+                        inCombo
+                          ? "cursor-not-allowed border-line bg-surface2 text-muted"
+                          : "border-flame bg-flame/10 text-flame hover:bg-flame/20"
+                      }`}
+                    >
+                      {inCombo ? "In Combo" : "+ Add to Combo"}
+                    </button>
+                    <span className="font-mono text-[10px] text-muted">
+                      pop {m.popularity}
+                    </span>
+                  </div>
+                </Card>
+              </div>
             );
           })}
           {filtered.length === 0 && (
@@ -530,57 +1012,6 @@ export default function MovesPage() {
               No moves match these filters.
             </div>
           )}
-        </div>
-
-        {/* Top 10 panel */}
-        <div className="mt-10">
-          <Section
-            title="Top 10"
-            subtitle="Most-used moves across community combos"
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[480px] border-separate border-spacing-0 text-sm">
-                <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
-                    <th className="border-b border-line py-2 pr-3">#</th>
-                    <th className="border-b border-line py-2 pr-3">Move</th>
-                    <th className="border-b border-line py-2 pr-3">Owner</th>
-                    <th className="border-b border-line py-2 pr-3">Diff</th>
-                    <th className="border-b border-line py-2 pr-3 text-right">Pop</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topMoves.map((m, i) => (
-                    <tr key={m.id} className="text-ink">
-                      <td className="border-b border-line py-2 pr-3 font-mono text-muted">
-                        {String(i + 1).padStart(2, "0")}
-                      </td>
-                      <td className="border-b border-line py-2 pr-3">
-                        <button
-                          onClick={() => {
-                            setCat(m.category);
-                            setQuery(m.name);
-                          }}
-                          className="text-left font-display text-lg tracking-wide hover:text-flame"
-                        >
-                          {m.name}
-                        </button>
-                      </td>
-                      <td className="border-b border-line py-2 pr-3 text-muted">
-                        {m.owner}
-                      </td>
-                      <td className="border-b border-line py-2 pr-3">
-                        <DiffDots level={m.difficulty} />
-                      </td>
-                      <td className="border-b border-line py-2 pr-3 text-right font-mono text-gold">
-                        {m.popularity}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Section>
         </div>
 
         {/* Saved combos */}
@@ -592,6 +1023,7 @@ export default function MovesPage() {
                   .map((id) => moveById(id))
                   .filter(Boolean) as Move[];
                 const ms = moves.reduce((a, m) => a + m.durationMs, 0);
+                const repCount = reps[c.id] ?? 0;
                 return (
                   <Card key={c.id} className="text-sm">
                     <div className="flex items-start justify-between gap-2">
@@ -605,9 +1037,12 @@ export default function MovesPage() {
                       </div>
                       <div className="shrink-0 text-right font-mono text-xs text-muted">
                         {(ms / 1000).toFixed(1)}s
+                        {repCount > 0 && (
+                          <div className="text-gold">{repCount} reps</div>
+                        )}
                       </div>
                     </div>
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         onClick={() => {
                           setCombo(c.moveIds);
@@ -617,6 +1052,14 @@ export default function MovesPage() {
                       >
                         Load
                       </button>
+                      {moves.length >= 2 && (
+                        <button
+                          onClick={() => startPractice(moves, c.id, c.name)}
+                          className="rounded-md border border-flame bg-flame/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-flame hover:bg-flame/20"
+                        >
+                          Practice
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           const next = savedCombos.filter(
@@ -749,6 +1192,24 @@ export default function MovesPage() {
                       </p>
                     )}
 
+                    {/* Practice button — show when 2+ moves */}
+                    {comboMoves.length >= 2 && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() =>
+                            startPractice(
+                              comboMoves,
+                              "active",
+                              comboName.trim() || "Active combo"
+                            )
+                          }
+                          className="w-full rounded-md border border-flame bg-flame/15 px-3 py-2.5 text-xs font-bold uppercase tracking-[0.15em] text-flame hover:bg-flame/25"
+                        >
+                          ▶ Practice combo
+                        </button>
+                      </div>
+                    )}
+
                     {/* Save + share row */}
                     <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center">
                       <input
@@ -771,7 +1232,7 @@ export default function MovesPage() {
                           Share Code
                         </button>
                         <button
-                          onClick={() => setCombo([])}
+                          onClick={clearCombo}
                           className="flex-1 rounded-md border border-line bg-surface2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted hover:text-flame md:flex-none"
                         >
                           Clear
@@ -804,6 +1265,25 @@ export default function MovesPage() {
           </div>
         </div>
       </div>
+
+      {/* Practice modal */}
+      {practiceOpen && (
+        <PracticeTimer
+          comboName={practiceName}
+          moves={practiceMoves}
+          comboKey={practiceComboKey}
+          initialReps={
+            practiceComboKey === "active" ? 0 : reps[practiceComboKey] ?? 0
+          }
+          onRepCompleted={(newCount) => {
+            if (practiceComboKey === "active") return;
+            const updated = bumpComboReps(practiceComboKey, 1);
+            setReps(updated);
+            void newCount;
+          }}
+          onClose={() => setPracticeOpen(false)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

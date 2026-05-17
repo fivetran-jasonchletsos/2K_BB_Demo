@@ -33,7 +33,7 @@ export function Section({
     <section className="mb-10">
       <div className="mb-4 flex items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-3xl tracking-wide text-ink md:text-4xl">
+          <h2 className="font-display text-3xl leading-tight tracking-wide text-ink md:text-4xl">
             {title}
           </h2>
           {subtitle && (
@@ -67,7 +67,7 @@ export function Stat({
   }[tone];
   return (
     <div className="rounded-lg border border-line bg-surface p-3 md:p-4">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+      <div className="font-sans text-[11px] font-bold uppercase tracking-wider text-muted">
         {label}
       </div>
       <div className={`mt-1 font-display text-2xl md:text-3xl ${toneClass} num`}>
@@ -82,10 +82,12 @@ export function Pill({
   children,
   tone = "default",
   className = "",
+  interactive = false,
 }: {
   children: ReactNode;
   tone?: "default" | "flame" | "ice" | "gold" | "lime" | "muted";
   className?: string;
+  interactive?: boolean;
 }) {
   const toneClass = {
     default: "border-line bg-surface2 text-ink",
@@ -95,9 +97,12 @@ export function Pill({
     lime: "border-lime/40 bg-lime/10 text-lime",
     muted: "border-line bg-surface2 text-muted",
   }[tone];
+  const interactiveClass = interactive
+    ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ice"
+    : "";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${toneClass} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition active:scale-95 ${toneClass} ${interactiveClass} ${className}`}
     >
       {children}
     </span>
@@ -106,7 +111,7 @@ export function Pill({
 
 export function TierBadge({ tier }: { tier: "S" | "A" | "B" | "C" | "D" }) {
   const map = {
-    S: "bg-tierS text-black shadow-glowGold",
+    S: "bg-tierS text-black ring-1 ring-gold/50 shadow-[0_0_12px_rgba(255,214,10,0.25)]",
     A: "bg-tierA text-white",
     B: "bg-tierB text-black",
     C: "bg-tierC text-black",
@@ -125,10 +130,12 @@ export function Bar({
   value,
   max = 99,
   tone = "flame",
+  pulse = false,
 }: {
   value: number;
   max?: number;
   tone?: "flame" | "ice" | "gold" | "lime";
+  pulse?: boolean;
 }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   const bg = {
@@ -139,7 +146,10 @@ export function Bar({
   }[tone];
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-surface2">
-      <div className={`h-full ${bg}`} style={{ width: `${pct}%` }} />
+      <div
+        className={`h-full ${bg} ${pulse ? "animate-pulse" : ""}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }

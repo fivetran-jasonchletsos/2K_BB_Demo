@@ -5,6 +5,8 @@ import {
   BADGES,
   BADGE_CATEGORIES,
   PATCH_NOTES,
+  parseTierList,
+  serializeTierList,
   tierCounts,
   type Badge,
   type BadgeCategory,
@@ -18,6 +20,7 @@ const CATEGORY_OPTIONS: ("All" | BadgeCategory)[] = ["All", ...BADGE_CATEGORIES]
 
 type SortKey = "tier" | "name" | "patch" | "personal";
 type ViewMode = "official" | "personal";
+type ShareMode = "diff" | "full";
 
 const LS_KEY = "2klab.badgeTiers";
 
@@ -34,6 +37,13 @@ function shiftTier(current: BadgeTier, dir: -1 | 1): BadgeTier {
   return TIERS[i];
 }
 
+// Split a patch change string into buff vs nerf based on first signed % token.
+function classifyChange(change: string): "buff" | "nerf" | "neutral" {
+  const m = change.match(/([+-])\d+%/);
+  if (!m) return "neutral";
+  return m[1] === "+" ? "buff" : "nerf";
+}
+
 export default function BadgesPage() {
   // ── State ────────────────────────────────────────────────────────────────
   const [category, setCategory] = useState<"All" | BadgeCategory>("All");
@@ -43,7 +53,14 @@ export default function BadgesPage() {
   const [view, setView] = useState<ViewMode>("official");
   const [personalTiers, setPersonalTiers] = useState<Record<string, BadgeTier>>({});
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [showPatchNotes, setShowPatchNotes] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Share modal
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareMode, setShareMode] = useState<ShareMode>("diff");
+  const [importText, setImportText] = useState("");
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   // ── Persistence ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -59,9 +76,19 @@ export default function BadgesPage() {
     } catch {}
   }, [personalTiers]);
 
-  // ── Derived list ────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────
   const effectiveTier = (b: Badge): BadgeTier =>
     view === "personal" ? personalTiers[b.id] ?? b.tier : b.tier;
+
+  const overrideCount = useMemo(
+    () =>
+      BADGES.reduce(
+        (n, b) =>
+          personalTiers[b.id] && personalTiers[b.id] !== b.tier ? n + 1 : n,
+        0
+      ),
+    [personalTiers]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -116,13 +143,20 @@ export default function BadgesPage() {
     .map((id) => BADGES.find((b) => b.id === id))
     .filter((b): b is Badge => Boolean(b));
 
+  const shareText = useMemo(
+    () => serializeTierList(personalTiers, shareMode),
+    [personalTiers, shareMode]
+  );
+
+  const canShare = view === "personal" && overrideCount > 0;
+
   // ── Handlers ────────────────────────────────────────────────────────────
   const toggleTier = (t: BadgeTier) => {
     setTierFilter((prev) => {
       const next = new Set(prev);
       if (next.has(t)) next.delete(t);
       else next.add(t);
-      if (next.size === 0) return new Set(TIERS); // never empty
+      if (next.size === 0) return new Set(TIERS);
       return next;
     });
   };
@@ -150,18 +184,185 @@ export default function BadgesPage() {
     });
   };
 
+  const toggleExpanded = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopyMsg("Copied");
+    } catch {
+      setCopyMsg("Copy failed");
+    }
+    setTimeout(() => setCopyMsg(null), 1500);
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([shareText], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "2klab-tier-list.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = () => {
+    const parsed = parseTierList(importText);
+    const keys = Object.keys(parsed);
+    if (keys.length === 0) {
+      setImportMsg("No matching badges found.");
+      return;
+    }
+    setPersonalTiers((prev) => ({ ...prev, ...parsed }));
+    setImportMsg(`Applied ${keys.length} badge${keys.length === 1 ? "" : "s"}.`);
+    setImportText("");
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
+  const recent = PATCH_NOTES[0];
+  const older = PATCH_NOTES.slice(1);
+
   return (
     <main className="mx-auto max-w-7xl px-4 pb-32 pt-6 md:px-6 md:pt-10">
-      {/* Title */}
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-5xl tracking-wide text-ink md:text-6xl">
-          Badges
-        </h1>
-        <p className="mt-2 text-sm text-muted">
-          {BADGES.length} badges · NBA 2K26 patch 1.7
-        </p>
+      {/* Title + share button */}
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 md:mb-8">
+        <div>
+          <h1 className="font-display text-5xl tracking-wide text-ink md:text-6xl">
+            Badges
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            {BADGES.length} badges · NBA 2K26 patch 1.7
+          </p>
+        </div>
+        {canShare && (
+          <button
+            onClick={() => {
+              setShareOpen(true);
+              setImportMsg(null);
+            }}
+            className="inline-flex items-center gap-2 rounded-md border border-flame bg-flame/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-flame transition hover:bg-flame hover:text-black"
+          >
+            <span aria-hidden className="font-mono">↗</span>
+            Share my tier list
+          </button>
+        )}
       </header>
+
+      {/* Stats row */}
+      <div className="mb-4 grid grid-cols-5 gap-2 md:gap-3">
+        <Stat label="S Tier" value={counts.S} tone="gold" />
+        <Stat label="A Tier" value={counts.A} tone="flame" />
+        <Stat label="B Tier" value={counts.B} tone="ice" />
+        <Stat label="C Tier" value={counts.C} tone="lime" />
+        <Stat label="D Tier" value={counts.D} />
+      </div>
+
+      {/* Patch notes — recent expanded, older collapsed */}
+      <section className="mb-6 rounded-xl border border-line bg-surface">
+        <div className="border-b border-line p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-2xl tracking-wide text-ink">
+                  Patch {recent.patch}
+                </span>
+                <span className="font-mono text-xs text-muted">{recent.date}</span>
+              </div>
+              <p className="mt-1 text-sm text-ink">{recent.summary}</p>
+            </div>
+            <Pill tone="flame">Latest</Pill>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-lime">
+                Buffs
+              </div>
+              <ul className="space-y-0.5 text-[12px] text-ink">
+                {recent.changes
+                  .filter((c) => classifyChange(c) === "buff")
+                  .map((c) => (
+                    <li key={c} className="flex gap-2">
+                      <span className="text-lime">+</span>
+                      <span>{c}</span>
+                    </li>
+                  ))}
+                {recent.changes.filter((c) => classifyChange(c) === "buff").length ===
+                  0 && <li className="text-muted">None this patch.</li>}
+              </ul>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-flame">
+                Nerfs
+              </div>
+              <ul className="space-y-0.5 text-[12px] text-ink">
+                {recent.changes
+                  .filter((c) => classifyChange(c) === "nerf")
+                  .map((c) => (
+                    <li key={c} className="flex gap-2">
+                      <span className="text-flame">−</span>
+                      <span>{c}</span>
+                    </li>
+                  ))}
+                {recent.changes.filter((c) => classifyChange(c) === "nerf").length ===
+                  0 && <li className="text-muted">None this patch.</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <details className="group">
+          <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted hover:text-ink">
+            <span>Older patches ({older.length})</span>
+            <span className="font-mono transition group-open:rotate-45">+</span>
+          </summary>
+          <div className="border-t border-line p-4">
+            <ol className="space-y-4">
+              {older.map((p) => (
+                <li key={p.patch} className="border-l-2 border-line pl-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-display text-xl tracking-wide text-ink">
+                      Patch {p.patch}
+                    </span>
+                    <span className="font-mono text-xs text-muted">{p.date}</span>
+                  </div>
+                  <p className="mt-0.5 text-sm text-ink">{p.summary}</p>
+                  <ul className="mt-2 space-y-0.5 text-[12px] text-muted">
+                    {p.changes.map((c) => {
+                      const k = classifyChange(c);
+                      return (
+                        <li key={c} className="flex gap-2">
+                          <span
+                            className={
+                              k === "buff"
+                                ? "text-lime"
+                                : k === "nerf"
+                                  ? "text-flame"
+                                  : "text-muted"
+                            }
+                          >
+                            {k === "buff" ? "+" : k === "nerf" ? "−" : "·"}
+                          </span>
+                          <span>{c}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </details>
+      </section>
 
       {/* Sticky filter bar */}
       <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
@@ -266,15 +467,6 @@ export default function BadgesPage() {
         )}
       </div>
 
-      {/* Stats row */}
-      <div className="mb-6 grid grid-cols-5 gap-2 md:gap-3">
-        <Stat label="S Tier" value={counts.S} tone="gold" />
-        <Stat label="A Tier" value={counts.A} tone="flame" />
-        <Stat label="B Tier" value={counts.B} tone="ice" />
-        <Stat label="C Tier" value={counts.C} tone="lime" />
-        <Stat label="D Tier" value={counts.D} />
-      </div>
-
       {/* Result count */}
       <div className="mb-3 flex items-center justify-between text-xs text-muted">
         <span>
@@ -291,32 +483,49 @@ export default function BadgesPage() {
         )}
       </div>
 
-      {/* Badge grid */}
+      {/* Badge grid — collapsed by default */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((b) => {
           const t = effectiveTier(b);
-          const delta = latestDelta(b);
           const isCompared = compareIds.includes(b.id);
           const isCustom =
             view === "personal" && personalTiers[b.id] && personalTiers[b.id] !== b.tier;
+          const isOpen = expanded.has(b.id);
+
+          const tierBorderClass = {
+            S: "border-l-tierS",
+            A: "border-l-tierA",
+            B: "border-l-tierB",
+            C: "border-l-tierC",
+            D: "border-l-tierD",
+          }[t];
 
           return (
             <Card
               key={b.id}
-              className={`relative flex flex-col gap-3 transition ${
+              className={`relative flex flex-col gap-3 border-0 border-l-2 ${tierBorderClass} transition ${
                 isCompared ? "ring-1 ring-ice" : ""
               }`}
             >
+              {/* Header row — always visible. Tap area to expand excludes tier arrows. */}
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(b.id)}
+                  aria-expanded={isOpen}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <h3 className="font-display text-2xl leading-tight tracking-wide text-ink">
                     {b.name}
                   </h3>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <Pill tone="muted">{b.category}</Pill>
                     {isCustom && <Pill tone="flame">moved</Pill>}
+                    <span className="font-mono text-[11px] font-semibold text-flame">
+                      {b.effectMagnitude}%
+                    </span>
                   </div>
-                </div>
+                </button>
 
                 <div className="flex flex-col items-end gap-1">
                   <TierBadge tier={t} />
@@ -343,65 +552,86 @@ export default function BadgesPage() {
                 </div>
               </div>
 
-              <p className="text-sm text-ink">
+              {/* Effect summary — always visible, tap to expand */}
+              <button
+                type="button"
+                onClick={() => toggleExpanded(b.id)}
+                aria-expanded={isOpen}
+                className="-mt-1 text-left text-sm text-ink"
+              >
                 {b.effect}{" "}
-                <span className="font-mono font-semibold text-flame">{b.effectMagnitude}%</span>
-              </p>
+                <span className="font-mono font-semibold text-flame">
+                  {b.effectMagnitude}%
+                </span>
+                <span className="ml-1 font-mono text-[11px] text-muted">
+                  {isOpen ? "[−]" : "[+]"}
+                </span>
+              </button>
 
-              <dl className="grid grid-cols-2 gap-2 text-[11px]">
-                <div>
-                  <dt className="font-semibold uppercase tracking-wider text-muted">Requires</dt>
-                  <dd className="mt-0.5 text-ink">{b.requirements}</dd>
-                </div>
-                <div>
-                  <dt className="font-semibold uppercase tracking-wider text-muted">Unlock</dt>
-                  <dd className="mt-0.5 font-mono text-ink">{b.unlockTime}</dd>
-                </div>
-              </dl>
+              {isOpen && (
+                <>
+                  <dl className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <dt className="font-semibold uppercase tracking-wider text-muted">
+                        Requires
+                      </dt>
+                      <dd className="mt-0.5 text-ink">{b.requirements}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold uppercase tracking-wider text-muted">
+                        Unlock
+                      </dt>
+                      <dd className="mt-0.5 font-mono text-ink">{b.unlockTime}</dd>
+                    </div>
+                  </dl>
 
-              {b.synergyWith.length > 0 && (
-                <div className="text-[11px]">
-                  <div className="font-semibold uppercase tracking-wider text-muted">Synergy</div>
-                  <div className="mt-0.5 text-ink">
-                    {b.synergyWith
-                      .map((id) => BADGES.find((x) => x.id === id)?.name)
-                      .filter(Boolean)
-                      .join(" · ")}
+                  {b.synergyWith.length > 0 && (
+                    <div className="text-[11px]">
+                      <div className="font-semibold uppercase tracking-wider text-muted">
+                        Synergy
+                      </div>
+                      <div className="mt-0.5 text-ink">
+                        {b.synergyWith
+                          .map((id) => BADGES.find((x) => x.id === id)?.name)
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-auto flex items-end justify-between gap-3 border-t border-line pt-2">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
+                      {b.patchHistory.slice(0, 3).map((p) => (
+                        <span key={p.patch} className="text-muted">
+                          {p.patch}:{" "}
+                          <span
+                            className={
+                              p.delta > 0
+                                ? "text-lime"
+                                : p.delta < 0
+                                  ? "text-flame"
+                                  : "text-ink"
+                            }
+                          >
+                            {p.delta > 0 ? `+${p.delta}` : p.delta === 0 ? "—" : p.delta}
+                            {p.delta !== 0 && "%"}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => toggleCompare(b.id)}
+                      className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition ${
+                        isCompared
+                          ? "border-ice bg-ice/10 text-ice"
+                          : "border-line bg-surface2 text-muted hover:text-ink"
+                      }`}
+                    >
+                      {isCompared ? "Selected" : "Compare"}
+                    </button>
                   </div>
-                </div>
+                </>
               )}
-
-              <div className="mt-auto flex items-end justify-between gap-3 border-t border-line pt-2">
-                <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]">
-                  {b.patchHistory.slice(0, 3).map((p) => (
-                    <span key={p.patch} className="text-muted">
-                      {p.patch}:{" "}
-                      <span
-                        className={
-                          p.delta > 0
-                            ? "text-lime"
-                            : p.delta < 0
-                              ? "text-flame"
-                              : "text-ink"
-                        }
-                      >
-                        {p.delta > 0 ? `+${p.delta}` : p.delta === 0 ? "—" : p.delta}
-                        {p.delta !== 0 && "%"}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-                <button
-                  onClick={() => toggleCompare(b.id)}
-                  className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition ${
-                    isCompared
-                      ? "border-ice bg-ice/10 text-ice"
-                      : "border-line bg-surface2 text-muted hover:text-ink"
-                  }`}
-                >
-                  {isCompared ? "Selected" : "Compare"}
-                </button>
-              </div>
             </Card>
           );
         })}
@@ -412,45 +642,6 @@ export default function BadgesPage() {
           </div>
         )}
       </div>
-
-      {/* Patch notes timeline */}
-      <section className="mt-10 rounded-xl border border-line bg-surface">
-        <button
-          onClick={() => setShowPatchNotes((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left"
-        >
-          <div>
-            <div className="font-display text-2xl tracking-wide text-ink">Patch notes</div>
-            <div className="text-xs text-muted">{PATCH_NOTES.length} recent patches</div>
-          </div>
-          <span className="font-mono text-muted">{showPatchNotes ? "−" : "+"}</span>
-        </button>
-        {showPatchNotes && (
-          <div className="border-t border-line p-4">
-            <ol className="space-y-4">
-              {PATCH_NOTES.map((p) => (
-                <li key={p.patch} className="border-l-2 border-flame pl-3">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-display text-xl tracking-wide text-ink">
-                      Patch {p.patch}
-                    </span>
-                    <span className="font-mono text-xs text-muted">{p.date}</span>
-                  </div>
-                  <p className="mt-0.5 text-sm text-ink">{p.summary}</p>
-                  <ul className="mt-2 space-y-0.5 text-[12px] text-muted">
-                    {p.changes.map((c) => (
-                      <li key={c} className="flex gap-2">
-                        <span className="text-flame">·</span>
-                        <span>{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
-      </section>
 
       <p className="mt-8 text-center text-[11px] text-muted">
         Tiers reflect community consensus on 2K26 patch 1.7. Re-check after each patch.
@@ -473,10 +664,7 @@ export default function BadgesPage() {
               const b = compareBadges[slot];
               if (!b) {
                 return (
-                  <div
-                    key={slot}
-                    className="p-4 text-center text-xs text-muted"
-                  >
+                  <div key={slot} className="p-4 text-center text-xs text-muted">
                     Pick another badge to compare
                   </div>
                 );
@@ -527,6 +715,113 @@ export default function BadgesPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 md:items-center md:p-4"
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg rounded-t-xl border border-line bg-surface md:rounded-xl"
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div>
+                <div className="font-display text-xl tracking-wide text-ink">
+                  My tier list
+                </div>
+                <div className="text-[11px] text-muted">
+                  {overrideCount} override{overrideCount === 1 ? "" : "s"}
+                </div>
+              </div>
+              <button
+                onClick={() => setShareOpen(false)}
+                className="text-xs font-semibold uppercase tracking-wider text-muted hover:text-ink"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3 p-4">
+              {/* Mode toggle */}
+              <div className="flex overflow-hidden rounded-md border border-line text-xs">
+                <button
+                  onClick={() => setShareMode("diff")}
+                  className={`flex-1 px-3 py-2 font-semibold uppercase tracking-wider transition ${
+                    shareMode === "diff"
+                      ? "bg-flame text-black"
+                      : "bg-surface2 text-muted"
+                  }`}
+                >
+                  Differences only
+                </button>
+                <button
+                  onClick={() => setShareMode("full")}
+                  className={`flex-1 px-3 py-2 font-semibold uppercase tracking-wider transition ${
+                    shareMode === "full"
+                      ? "bg-flame text-black"
+                      : "bg-surface2 text-muted"
+                  }`}
+                >
+                  Full list
+                </button>
+              </div>
+
+              {/* Text preview */}
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-bg p-3 font-mono text-[12px] leading-relaxed text-ink">
+                {shareText}
+              </pre>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleCopy}
+                  className="flex-1 rounded-md border border-flame bg-flame px-3 py-2 text-xs font-semibold uppercase tracking-wider text-black transition hover:bg-flame/90"
+                >
+                  {copyMsg ?? "Copy"}
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="flex-1 rounded-md border border-line bg-surface2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-ink hover:border-ice"
+                >
+                  Download .txt
+                </button>
+              </div>
+
+              {/* Import */}
+              <div className="border-t border-line pt-3">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  Apply tier list
+                </div>
+                <textarea
+                  value={importText}
+                  onChange={(e) => {
+                    setImportText(e.target.value);
+                    setImportMsg(null);
+                  }}
+                  rows={4}
+                  placeholder={"S: Clamps, Deadeye\nA: Dimer, Challenger"}
+                  className="w-full rounded-md border border-line bg-bg px-3 py-2 font-mono text-[12px] text-ink placeholder:text-muted focus:border-ice focus:outline-none"
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] text-muted">
+                    {importMsg ?? "Unknown badge names are skipped."}
+                  </span>
+                  <button
+                    onClick={handleImport}
+                    disabled={!importText.trim()}
+                    className="rounded-md border border-line bg-surface2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink transition hover:border-ice disabled:opacity-40"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

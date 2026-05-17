@@ -17,15 +17,19 @@ import {
   getThisWeek,
 } from "@/lib/pulse";
 
-type TabId = "risers" | "fallers" | "confidence" | "week";
+type TabId = "watchlist" | "risers" | "fallers" | "confidence" | "week";
 type SortId = "delta" | "confidence" | "form";
 
 const TABS: { id: TabId; label: string }[] = [
+  { id: "watchlist", label: "Watchlist" },
   { id: "risers", label: "Risers" },
   { id: "fallers", label: "Fallers" },
   { id: "confidence", label: "High confidence" },
   { id: "week", label: "This week" },
 ];
+
+const WATCHLIST_STORAGE_KEY = "2klab.pulse.watchlist";
+const ALERTS_STORAGE_KEY = "2klab.pulse.alerts";
 
 function fmtAgo(seconds: number): string {
   if (seconds < 60) return `${seconds}s ago`;
@@ -174,14 +178,90 @@ function DriverBar({
   );
 }
 
+function Sparkline({
+  points,
+  delta,
+  width = 96,
+  height = 28,
+}: {
+  points: number[];
+  delta: number;
+  width?: number;
+  height?: number;
+}) {
+  if (!points.length) return null;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = Math.max(0.5, max - min);
+  const stepX = points.length > 1 ? width / (points.length - 1) : width;
+  const coords = points.map((v, i) => {
+    const x = i * stepX;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return [x, y] as const;
+  });
+  const path = coords
+    .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
+  const stroke =
+    delta > 0 ? "var(--color-lime, #b6f74a)" : delta < 0 ? "var(--color-flame, #ff5b3a)" : "#7a7a85";
+  const last = coords[coords.length - 1];
+  const tone = delta > 0 ? "text-lime" : delta < 0 ? "text-flame" : "text-muted";
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className={`overflow-visible ${tone}`}
+      aria-hidden
+    >
+      <path d={path} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r={2} fill={stroke} />
+    </svg>
+  );
+}
+
+function StarToggle({
+  followed,
+  onClick,
+  label,
+}: {
+  followed: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-pressed={followed}
+      aria-label={label}
+      title={label}
+      className={`shrink-0 rounded-md border px-2 py-1 font-mono text-sm leading-none transition ${
+        followed
+          ? "border-lime/60 bg-lime/10 text-lime"
+          : "border-line bg-surface2 text-muted hover:text-ink"
+      }`}
+    >
+      <span aria-hidden>{followed ? "★" : "☆"}</span>
+    </button>
+  );
+}
+
 function PlayerRow({
   p,
   expanded,
   onToggle,
+  followed,
+  onToggleFollow,
 }: {
   p: RatingPrediction;
   expanded: boolean;
   onToggle: () => void;
+  followed: boolean;
+  onToggleFollow: () => void;
 }) {
   const driverMax = useMemo(
     () =>
@@ -199,56 +279,64 @@ function PlayerRow({
 
   return (
     <div className="rounded-xl border border-line bg-surface transition hover:border-line/80">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-3 p-3 text-left md:p-4"
-      >
-        <Avatar name={p.displayName} team={p.team} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <div className="truncate font-display text-lg tracking-wide text-ink md:text-xl">
-              {p.displayName}
+      <div className="flex w-full items-center gap-2 p-3 md:gap-3 md:p-4">
+        <StarToggle
+          followed={followed}
+          onClick={onToggleFollow}
+          label={followed ? `Unfollow ${p.displayName}` : `Follow ${p.displayName}`}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`Expand ${p.displayName}`}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <Avatar name={p.displayName} team={p.team} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="truncate font-display text-lg tracking-wide text-ink md:text-xl">
+                {p.displayName}
+              </div>
+              <Pill tone="muted" className="hidden md:inline-flex">
+                {p.team}
+              </Pill>
+              <Pill tone="muted" className="hidden md:inline-flex">
+                {p.position}
+              </Pill>
             </div>
-            <Pill tone="muted" className="hidden md:inline-flex">
-              {p.team}
-            </Pill>
-            <Pill tone="muted" className="hidden md:inline-flex">
-              {p.position}
-            </Pill>
-          </div>
-          <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted md:hidden">
-            <span>{p.team}</span>
-            <span>·</span>
-            <span>{p.position}</span>
-            <span>·</span>
-            <span>{p.currentRating} OVR</span>
-          </div>
-          <div className="mt-1.5 line-clamp-2 text-xs text-muted md:text-sm">
-            {p.primaryDriver}
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            <div className="w-24 md:w-32">
-              <Bar value={p.confidence * 100} max={100} tone="ice" />
+            <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted md:hidden">
+              <span>{p.team}</span>
+              <span>·</span>
+              <span>{p.position}</span>
+              <span>·</span>
+              <span>{p.currentRating} OVR</span>
             </div>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
-              {Math.round(p.confidence * 100)}% conf
-            </span>
+            <div className="mt-1.5 line-clamp-2 text-xs text-muted md:text-sm">
+              {p.primaryDriver}
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="w-24 md:w-32">
+                <Bar value={p.confidence * 100} max={100} tone="ice" />
+              </div>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                {Math.round(p.confidence * 100)}% conf
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <div className="hidden font-mono text-xs text-muted md:block">
-            {p.currentRating} OVR
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <div className="hidden font-mono text-xs text-muted md:block">
+              {p.currentRating} OVR
+            </div>
+            <div className="font-display text-2xl leading-none md:text-3xl">
+              <DeltaArrow delta={p.predictedDelta} />
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+              predicted
+            </div>
           </div>
-          <div className="font-display text-2xl leading-none md:text-3xl">
-            <DeltaArrow delta={p.predictedDelta} />
-          </div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
-            predicted
-          </div>
-        </div>
-      </button>
+        </button>
+      </div>
 
       {expanded && (
         <div className="animate-slide-up border-t border-line p-3 md:p-4">
@@ -356,6 +444,76 @@ function PlayerRow({
   );
 }
 
+function WatchlistRow({
+  p,
+  onUnfollow,
+}: {
+  p: RatingPrediction;
+  onUnfollow: () => void;
+}) {
+  const series = useMemo(() => {
+    if (p.forecast7d && p.forecast7d.length) return p.forecast7d;
+    const out: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      out.push(p.currentRating + (p.predictedDelta * i) / 6);
+    }
+    return out;
+  }, [p]);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface p-3 md:p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Avatar name={p.displayName} team={p.team} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="truncate font-display text-lg tracking-wide text-ink md:text-xl">
+              {p.displayName}
+            </div>
+            <Pill tone="muted" className="hidden md:inline-flex">{p.team}</Pill>
+            <Pill tone="muted" className="hidden md:inline-flex">{p.position}</Pill>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
+            <span className="md:hidden">{p.team}</span>
+            <span className="md:hidden">·</span>
+            <span className="md:hidden">{p.position}</span>
+            <span className="md:hidden">·</span>
+            <span>{p.currentRating} OVR</span>
+            <span>·</span>
+            <span className={p.predictedDelta > 0 ? "text-lime" : p.predictedDelta < 0 ? "text-flame" : "text-muted"}>
+              {p.predictedDelta > 0 ? "+" : ""}
+              {p.predictedDelta}
+            </span>
+            <span>·</span>
+            <span>{Math.round(p.confidence * 100)}% conf</span>
+            <span>·</span>
+            <span className="text-lime">followed</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <Sparkline points={series} delta={p.predictedDelta} />
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="font-display text-2xl leading-none">
+              <DeltaArrow delta={p.predictedDelta} />
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+              7d forecast
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+        <button
+          type="button"
+          onClick={onUnfollow}
+          className="font-mono text-[10px] uppercase tracking-wider text-flame hover:text-ink"
+        >
+          unfollow
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PulsePage() {
   const [tab, setTab] = useState<TabId>("risers");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -370,13 +528,79 @@ export default function PulsePage() {
 
   // Live tick — sync clock + per-source sync ages.
   const [tick, setTick] = useState(0);
+  // Refresh offset — subtracted from base sync ages so manual refresh snaps to 00:00.
+  const [refreshOffset, setRefreshOffset] = useState(0);
+  const [pulseFlash, setPulseFlash] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 30), 30_000);
+    const t = setInterval(() => setTick((n) => n + 1), 1_000);
     return () => clearInterval(t);
   }, []);
 
+  // Watchlist — persisted to localStorage.
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [alerts, setAlerts] = useState<string[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(WATCHLIST_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setWatchlist(parsed.filter((x): x is string => typeof x === "string"));
+      }
+      const aRaw = localStorage.getItem(ALERTS_STORAGE_KEY);
+      if (aRaw) {
+        const parsed = JSON.parse(aRaw);
+        if (Array.isArray(parsed)) setAlerts(parsed.filter((x): x is string => typeof x === "string"));
+      }
+    } catch {
+      // ignore — corrupt storage shouldn't break the page
+    }
+    setHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
+    } catch {
+      // storage may be unavailable (private mode); ignore
+    }
+  }, [watchlist, hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+    } catch {
+      // storage may be unavailable; ignore
+    }
+  }, [alerts, hydrated]);
+
+  const watchedSet = useMemo(() => new Set(watchlist), [watchlist]);
+
+  const toggleFollow = (id: string) => {
+    setWatchlist((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+  const clearWatchlist = () => {
+    setWatchlist([]);
+    setAlerts([]);
+  };
+
+  const handleRefresh = () => {
+    // Snap freshness to 00:00 and bump a render key so per-source ages re-derive.
+    const baseMin = Math.min(...SOURCES.map((s) => s.lastSyncSecondsAgo));
+    setRefreshOffset(baseMin + tick);
+    setPulseFlash((n) => n + 1);
+  };
+
   const tabResults = useMemo(() => {
     switch (tab) {
+      case "watchlist":
+        return PREDICTIONS.filter((p) => watchedSet.has(p.playerId)).sort(
+          (a, b) =>
+            Math.abs(b.predictedDelta) - Math.abs(a.predictedDelta) ||
+            b.confidence - a.confidence,
+        );
       case "risers":
         return getRisers();
       case "fallers":
@@ -386,7 +610,7 @@ export default function PulsePage() {
       case "week":
         return getThisWeek();
     }
-  }, [tab]);
+  }, [tab, watchedSet]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -416,7 +640,17 @@ export default function PulsePage() {
   }, [tabResults, query, positions, teams, minConfidence, sort]);
 
   const totalRows = SOURCES.reduce((s, x) => s + x.rowsIngestedToday, 0);
-  const minSync = Math.min(...SOURCES.map((s) => s.lastSyncSecondsAgo + tick));
+  const minSync = Math.max(
+    0,
+    Math.min(...SOURCES.map((s) => s.lastSyncSecondsAgo + tick - refreshOffset)),
+  );
+
+  function fmtMmSs(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
+  }
 
   const togglePosition = (pos: string) => {
     setPositions((prev) => {
@@ -480,13 +714,13 @@ export default function PulsePage() {
       <Card className="!p-3 md:!p-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="inline-flex items-center gap-2">
-            <PulsingDot />
+            <span key={pulseFlash} className="relative inline-flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-lime" />
+            </span>
             <span className="font-mono text-[11px] uppercase tracking-wider text-lime">
               Live
             </span>
-          </div>
-          <div className="font-mono text-[11px] text-muted">
-            last sync <span className="text-ink">{fmtAgo(minSync)}</span>
           </div>
           <div className="font-mono text-[11px] text-muted">
             <span className="text-ink">{SOURCES.length}</span> sources
@@ -530,25 +764,56 @@ export default function PulsePage() {
           </span>
         }
       >
+        {/* Freshness line — prominent above tabs */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface2/40 px-3 py-2">
+          <div className="flex items-center gap-2 font-mono text-[11px]">
+            <span key={`dot-${pulseFlash}`} className="relative inline-flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-lime" />
+            </span>
+            <span className="uppercase tracking-wider text-muted">last sync</span>
+            <span className="font-display text-base tabular-nums text-ink">
+              {fmtMmSs(minSync)}
+            </span>
+            <span className="uppercase tracking-wider text-muted">ago</span>
+            <span className="text-muted">·</span>
+            <span className="text-ink tabular-nums">{SOURCES.length}</span>
+            <span className="uppercase tracking-wider text-muted">sources</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-1.5 rounded-md border border-lime/40 bg-lime/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-lime transition hover:bg-lime/20 active:scale-[0.98]"
+          >
+            <span aria-hidden>↻</span>
+            refresh
+          </button>
+        </div>
+
         {/* Tabs */}
         <div className="mb-3 flex flex-wrap gap-1.5">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setTab(t.id);
-                setExpandedId(null);
-              }}
-              className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wider transition ${
-                tab === t.id
-                  ? "border-lime/60 bg-lime/10 text-lime"
-                  : "border-line bg-surface2 text-muted hover:text-ink"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const isWatchlist = t.id === "watchlist";
+            const count = isWatchlist ? watchlist.length : 0;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setTab(t.id);
+                  setExpandedId(null);
+                }}
+                className={`rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wider transition ${
+                  tab === t.id
+                    ? "border-lime/60 bg-lime/10 text-lime"
+                    : "border-line bg-surface2 text-muted hover:text-ink"
+                }`}
+              >
+                {t.label}
+                {isWatchlist && <span className="ml-1 tabular-nums opacity-80">({count})</span>}
+              </button>
+            );
+          })}
         </div>
 
         {/* Filter bar */}
@@ -676,13 +941,47 @@ export default function PulsePage() {
         </Card>
 
         {/* Leaderboard */}
+        {tab === "watchlist" && watchlist.length > 0 && (
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+              {watchlist.length} followed · sorted by predicted Δ
+            </span>
+            <button
+              type="button"
+              onClick={clearWatchlist}
+              className="font-mono text-[10px] uppercase tracking-wider text-flame hover:text-ink"
+            >
+              clear watchlist
+            </button>
+          </div>
+        )}
         <div className="space-y-2">
-          {filtered.length === 0 ? (
+          {tab === "watchlist" && watchlist.length === 0 ? (
+            <Card>
+              <div className="py-10 text-center">
+                <div className="font-display text-3xl text-muted" aria-hidden>☆</div>
+                <div className="mt-2 font-display text-lg tracking-wide text-ink">
+                  Watchlist is empty
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-muted">
+                  Star players above to track them here.
+                </div>
+              </div>
+            </Card>
+          ) : filtered.length === 0 ? (
             <Card>
               <div className="py-8 text-center font-mono text-xs text-muted">
                 No players match the current filters.
               </div>
             </Card>
+          ) : tab === "watchlist" ? (
+            filtered.map((p) => (
+              <WatchlistRow
+                key={p.playerId}
+                p={p}
+                onUnfollow={() => toggleFollow(p.playerId)}
+              />
+            ))
           ) : (
             filtered.map((p) => (
               <PlayerRow
@@ -692,6 +991,8 @@ export default function PulsePage() {
                 onToggle={() =>
                   setExpandedId((id) => (id === p.playerId ? null : p.playerId))
                 }
+                followed={watchedSet.has(p.playerId)}
+                onToggleFollow={() => toggleFollow(p.playerId)}
               />
             ))
           )}
@@ -745,7 +1046,7 @@ export default function PulsePage() {
       <Section title="Data freshness" subtitle="Per-source sync clock">
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
           {SOURCES.map((s) => {
-            const ageSec = s.lastSyncSecondsAgo + tick;
+            const ageSec = Math.max(0, s.lastSyncSecondsAgo + tick - refreshOffset);
             const stale = ageSec > 300;
             return (
               <div
