@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ROUTES } from "@/components/Nav";
+import { NAV_GROUPS, ROUTES } from "@/components/Nav";
 import PlayerCard from "@/components/PlayerCard";
 import { Card, Pill, Stat } from "@/components/ui";
 import { getActiveCodes, getExpiringWithin, msUntilExpiry } from "@/lib/codes";
@@ -413,32 +413,43 @@ export default function Home() {
             Sections
           </h2>
           <span className="text-[11px] uppercase tracking-wider text-muted">
-            {ROUTES.length} pages
+            {ROUTES.length} pages · {NAV_GROUPS.length} groups
           </span>
         </div>
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {ROUTES.map((r, i) => (
-            <li key={r.href}>
-              <Link
-                href={r.href}
-                className="group block rounded-xl border border-line bg-surface p-4 transition hover:-translate-y-0.5 hover:border-flame/60 hover:bg-surface2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted">
-                    0{i + 1}
-                  </span>
-                  <span className="text-xs text-muted transition group-hover:text-flame">
-                    Open →
-                  </span>
-                </div>
-                <div className="mt-2 font-display text-3xl tracking-wide text-ink">
-                  {r.label}
-                </div>
-                <div className="mt-1 text-sm text-muted">{r.sub}</div>
-              </Link>
-            </li>
+        <div className="space-y-6">
+          {NAV_GROUPS.map((g) => (
+            <div key={g.id}>
+              <div className="mb-2 flex items-baseline gap-2">
+                <h3 className="font-display text-sm uppercase tracking-[0.2em] text-ink">
+                  {g.label}
+                </h3>
+                <span className="text-[10px] uppercase tracking-wider text-muted">
+                  · {g.routes.length}
+                </span>
+              </div>
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                {g.routes.map((r) => (
+                  <li key={r.href}>
+                    <Link
+                      href={r.href}
+                      className="group block rounded-lg border border-line bg-surface p-3 transition hover:-translate-y-0.5 hover:border-flame/60 hover:bg-surface2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-display text-xl tracking-wide text-ink">
+                          {r.label}
+                        </span>
+                        <span className="text-xs text-muted transition group-hover:text-flame">
+                          →
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[12px] text-muted">{r.sub}</div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </section>
 
       <Card className="border-flame/30 bg-gradient-to-br from-flame/[0.08] to-transparent">

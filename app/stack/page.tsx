@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   END_TO_END_TIMING,
   ENGINES,
@@ -692,13 +692,790 @@ function H({
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Animated architecture diagram
+// ───────────────────────────────────────────────────────────────────────────
+
+// Source badge abbreviations — keep typographic, no logos.
+const SOURCE_BADGES: { abbr: string; label: string }[] = [
+  { abbr: "BDL", label: "balldontlie" },
+  { abbr: "NBA", label: "stats.nba.com" },
+  { abbr: "RDT", label: "reddit r/NBA2k" },
+  { abbr: "ESN", label: "ESPN News" },
+  { abbr: "2KR", label: "2KRatings" },
+  { abbr: "LCK", label: "locker codes" },
+];
+
+// Five stages. Used for both the diagram and the per-stage cards below.
+type StageKey = "sources" | "fivetran" | "mdls" | "snowflake" | "serve";
+
+const STAGES: {
+  key: StageKey;
+  num: string;
+  short: string;
+  label: string;
+  sub: string;
+}[] = [
+  { key: "sources", num: "01", short: "SRC", label: "SOURCES", sub: "6 connectors" },
+  { key: "fivetran", num: "02", short: "SDK", label: "FIVETRAN", sub: "Connector SDK" },
+  { key: "mdls", num: "03", short: "ICE", label: "MDLS", sub: "Iceberg / Parquet" },
+  { key: "snowflake", num: "04", short: "SNO", label: "SNOWFLAKE", sub: "on-Iceberg" },
+  { key: "serve", num: "05", short: "APP", label: "dbt → APP", sub: "models · Next.js" },
+];
+
+// Pure-CSS keyframes. Injected via a <style> tag because Tailwind doesn't
+// support the kind of multi-stop, multi-axis travel we want here. No deps.
+const DIAGRAM_CSS = `
+@keyframes stagePulse {
+  0%, 80%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
+  10%           { box-shadow: 0 0 0 0 rgba(0,229,255,0.45); }
+  40%           { box-shadow: 0 0 0 10px rgba(0,229,255,0); }
+}
+@keyframes parquetShimmer {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+@keyframes tracePulse {
+  0%   { transform: scale(0.4); opacity: 0; }
+  20%  { transform: scale(1.15); opacity: 1; }
+  60%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.6); opacity: 0; }
+}
+.diagram-stage-pulse { animation: stagePulse 5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .diagram-packet,
+  .diagram-stage-pulse,
+  .diagram-parquet-stripe,
+  .trace-packet {
+    animation: none !important;
+  }
+  .diagram-packet { opacity: 0.6; }
+}
+`;
+
+// Generate a stable, deterministic set of packet configurations so SSR and
+// client output match (no Math.random in render path).
+type PacketTone = "ink" | "flame" | "ice" | "gold";
+type Packet = { delay: number; tone: PacketTone };
+
+function buildPackets(count: number, period: number): Packet[] {
+  // Evenly stagger; sprinkle 2 rare tones deterministically.
+  const tones: PacketTone[] = ["ink", "ink", "ink", "flame", "ink", "ice", "ink", "gold"];
+  return Array.from({ length: count }, (_, i) => ({
+    delay: -(i * (period / count)),
+    tone: tones[i % tones.length],
+  }));
+}
+
+const PACKET_PERIOD_S = 5; // total travel time per packet
+const PACKET_COUNT = 8;
+
+function toneClass(t: PacketTone) {
+  if (t === "flame") return "bg-flame";
+  if (t === "ice") return "bg-ice";
+  if (t === "gold") return "bg-gold";
+  return "bg-ink";
+}
+
+function ArchitectureDiagram({ replayKey }: { replayKey: number }) {
+  const packets = useMemo(() => buildPackets(PACKET_COUNT, PACKET_PERIOD_S), []);
+
+  // Horizontal (desktop) packet rail spans across the SVG.
+  // Container is the diagram width; we offset packets via percent positioning.
+  return (
+    <div
+      key={replayKey}
+      className="relative border border-line bg-surface/60"
+      aria-label="Architecture data flow diagram"
+    >
+      {/* Desktop: horizontal flow */}
+      <div className="relative hidden md:block">
+        <div className="grid grid-cols-5 gap-0">
+          {STAGES.map((s, i) => (
+            <div
+              key={s.key}
+              className="relative px-4 py-6"
+              style={{
+                borderRight: i < STAGES.length - 1 ? "1px solid #26262F" : "none",
+              }}
+            >
+              <div className="text-[10px] font-mono uppercase tracking-wider text-muted num">
+                {s.num}
+              </div>
+              <div className="mt-1 font-display text-xl tracking-wide text-ink">
+                {s.label}
+              </div>
+              <div className="mt-0.5 font-mono text-[10px] text-muted">{s.sub}</div>
+              <div className="mt-4">
+                <StageVisual stage={s.key} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Packet rail: absolute, runs across the full diagram width */}
+        <div
+          className="pointer-events-none absolute left-0 right-0"
+          style={{ top: "calc(100% - 38px)" }}
+          aria-hidden
+        >
+          <div className="relative mx-4 h-[2px] bg-line/60">
+            {packets.map((p, idx) => (
+              <span
+                key={`h-${idx}-${replayKey}`}
+                className={`diagram-packet absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${toneClass(p.tone)}`}
+                style={{
+                  left: 0,
+                  animation: `flowHorizPct ${PACKET_PERIOD_S}s linear ${p.delay}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile: vertical flow */}
+      <div className="relative md:hidden">
+        <div className="flex flex-col">
+          {STAGES.map((s, i) => (
+            <div
+              key={s.key}
+              className="relative px-4 py-4"
+              style={{
+                borderBottom: i < STAGES.length - 1 ? "1px solid #26262F" : "none",
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-16 shrink-0">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted num">
+                    {s.num}
+                  </div>
+                  <div className="mt-1 font-display text-base tracking-wide text-ink">
+                    {s.label}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[9px] text-muted">
+                    {s.sub}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <StageVisual stage={s.key} compact />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Vertical packet rail */}
+        <div
+          className="pointer-events-none absolute bottom-0 top-0"
+          style={{ left: "14px" }}
+          aria-hidden
+        >
+          <div className="relative h-full w-[2px] bg-line/60">
+            {packets.map((p, idx) => (
+              <span
+                key={`v-${idx}-${replayKey}`}
+                className={`diagram-packet absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-full ${toneClass(p.tone)}`}
+                style={{
+                  top: 0,
+                  animation: `flowVertPct ${PACKET_PERIOD_S}s linear ${p.delay}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── per-stage inline visuals (drawn in stage column)
+
+function StageVisual({
+  stage,
+  compact,
+}: {
+  stage: StageKey;
+  compact?: boolean;
+}) {
+  if (stage === "sources") {
+    return (
+      <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "max-w-[180px]"}`}>
+        {SOURCE_BADGES.map((b) => (
+          <span
+            key={b.abbr}
+            title={b.label}
+            className="inline-flex h-6 min-w-[34px] items-center justify-center border border-line bg-bg px-1.5 font-mono text-[10px] tracking-wider text-ink"
+          >
+            {b.abbr}
+          </span>
+        ))}
+      </div>
+    );
+  }
+  if (stage === "fivetran") {
+    // Hex / diamond shape, CSS-clipped
+    return (
+      <div className="flex items-center justify-start">
+        <div
+          className="diagram-stage-pulse relative flex h-16 w-16 items-center justify-center border border-flame/70 bg-flame/10"
+          style={{
+            clipPath:
+              "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+          }}
+        >
+          <span className="font-display text-sm tracking-widest text-flame">
+            SDK
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (stage === "mdls") {
+    // Tall rectangle with horizontal stripes (Parquet/Iceberg layout)
+    const stripes = [0, 1, 2, 3, 4, 5];
+    return (
+      <div className="flex items-start">
+        <div className="diagram-stage-pulse relative flex h-20 w-16 flex-col justify-between border border-ice/70 bg-ice/5 p-1.5">
+          {stripes.map((i) => (
+            <span
+              key={i}
+              className="diagram-parquet-stripe block h-[2px] w-full bg-ice/80"
+              style={{
+                animation: `parquetShimmer 3s ease-in-out ${i * 0.18}s infinite`,
+              }}
+            />
+          ))}
+          <span className="absolute -bottom-4 left-0 font-mono text-[9px] uppercase tracking-wider text-ice/80">
+            iceberg
+          </span>
+        </div>
+      </div>
+    );
+  }
+  if (stage === "snowflake") {
+    return (
+      <div className="flex items-center">
+        <div className="diagram-stage-pulse relative flex h-16 w-20 items-center justify-center border border-gold/70 bg-gold/5">
+          <div className="absolute inset-2 grid grid-cols-3 grid-rows-3 gap-[2px] opacity-70">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <span key={i} className="bg-gold/40" />
+            ))}
+          </div>
+          <span className="relative font-display text-xs tracking-widest text-gold">
+            SNO·ICE
+          </span>
+        </div>
+      </div>
+    );
+  }
+  // serve: dbt branch + app
+  return (
+    <div className="flex items-center gap-2">
+      <div className="diagram-stage-pulse relative flex h-12 w-12 items-center justify-center border border-lime/70 bg-lime/5">
+        <span className="font-display text-xs tracking-widest text-lime">dbt</span>
+      </div>
+      <span className="font-mono text-[10px] text-muted">→</span>
+      <div className="relative flex h-12 w-14 items-center justify-center border border-ink/40 bg-bg">
+        <span className="font-display text-xs tracking-wide text-ink">APP</span>
+      </div>
+    </div>
+  );
+}
+
+// Percentage-based flow keyframes (separate so we don't need CSS vars in JS).
+const DIAGRAM_CSS_PCT = `
+@keyframes flowHorizPct {
+  0%   { left: 0%;   opacity: 0; transform: translateY(-50%) scale(0.6); }
+  6%   { opacity: 1; transform: translateY(-50%) scale(1); }
+  94%  { left: 100%; opacity: 1; transform: translateY(-50%) translateX(-100%) scale(1); }
+  100% { left: 100%; opacity: 0; transform: translateY(-50%) translateX(-100%) scale(0.6); }
+}
+@keyframes flowVertPct {
+  0%   { top: 0%;   opacity: 0; transform: translateX(-50%) scale(0.6); }
+  6%   { opacity: 1; transform: translateX(-50%) scale(1); }
+  94%  { top: 100%; opacity: 1; transform: translateX(-50%) translateY(-100%) scale(1); }
+  100% { top: 100%; opacity: 0; transform: translateX(-50%) translateY(-100%) scale(0.6); }
+}
+`;
+
+function DiagramStyles() {
+  return (
+    <style
+      dangerouslySetInnerHTML={{
+        __html: DIAGRAM_CSS + DIAGRAM_CSS_PCT,
+      }}
+    />
+  );
+}
+
+function AnimatedArchitecture() {
+  const [replayKey, setReplayKey] = useState(0);
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+          flow · sources → fivetran sdk → mdls iceberg → snowflake-on-iceberg → dbt → next.js
+        </div>
+        <button
+          type="button"
+          onClick={() => setReplayKey((k) => k + 1)}
+          className="font-mono text-[10px] uppercase tracking-wider text-ice hover:text-ink"
+          style={{ minHeight: 28 }}
+        >
+          ▶ replay
+        </button>
+      </div>
+      <ArchitectureDiagram replayKey={replayKey} />
+      <div className="mt-2 flex flex-wrap gap-3 font-mono text-[9px] uppercase tracking-wider text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-ink" /> standard row
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-flame" /> high-volume stat
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-ice" /> social signal
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-gold" /> rare drop
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Interactive packet trace simulator
+// ───────────────────────────────────────────────────────────────────────────
+
+type TraceKey = "stat" | "reddit" | "locker";
+
+type TraceLine = { t: string; text: string };
+
+const TRACES: Record<
+  TraceKey,
+  { label: string; tone: PacketTone; lines: TraceLine[] }
+> = {
+  stat: {
+    label: "Trace a player stat",
+    tone: "flame",
+    lines: [
+      { t: "00:00.05", text: "Fetched from balldontlie.io GET /v1/stats?player_ids=237" },
+      { t: "00:00.18", text: "Fivetran SDK upsert -> bronze_balldontlie.stats" },
+      { t: "00:00.21", text: "Written to MDLS as Iceberg parquet (s3://fivetran-mdls-2k-lab/bronze/...)" },
+      { t: "00:00.28", text: "Glue/Polaris catalog snapshot updated" },
+      { t: "00:00.31", text: "Snowflake-on-Iceberg query returns row via EXTERNAL VOLUME" },
+      { t: "00:00.42", text: "dbt staging view stg_nba__player_stats projects + casts" },
+      { t: "00:00.48", text: "mart_rating_predictions incremental merge (clamp [-5,+5])" },
+      { t: "00:00.51", text: "Next.js /pulse ISR revalidate -> renders new predicted_delta" },
+    ],
+  },
+  reddit: {
+    label: "Trace a Reddit post",
+    tone: "ice",
+    lines: [
+      { t: "00:00.04", text: "OAuth2 token refresh -> reddit.com/api/v1/access_token" },
+      { t: "00:00.12", text: "Fetched from /r/NBA2k/new.json (limit=100)" },
+      { t: "00:00.23", text: "Fivetran SDK upsert -> bronze_reddit_2k.posts" },
+      { t: "00:00.27", text: "Iceberg parquet written, snapshot committed" },
+      { t: "00:00.35", text: "Snowflake-on-Iceberg reads via catalog integration" },
+      { t: "00:00.46", text: "stg_reddit__posts lowercases title+body, normalizes tz" },
+      { t: "00:00.58", text: "int_player_news_signal scores keyword + sentiment" },
+      { t: "00:00.69", text: "mart_player_360 merges news_score; /players revalidates" },
+    ],
+  },
+  locker: {
+    label: "Trace a locker code",
+    tone: "gold",
+    lines: [
+      { t: "00:00.03", text: "Aggregator JSON GET /api/codes (cadence=5m)" },
+      { t: "00:00.09", text: "Fivetran SDK upsert -> bronze_locker_codes.drops" },
+      { t: "00:00.14", text: "Iceberg snapshot committed (1 new row, 0 deletes)" },
+      { t: "00:00.19", text: "Snowflake-on-Iceberg picks up new snapshot" },
+      { t: "00:00.27", text: "stg_locker_codes__drops parses expires_at -> TIMESTAMP_TZ" },
+      { t: "00:00.33", text: "mart_locker_codes_active view filters expired, ranks by expiry" },
+      { t: "00:00.38", text: "Next.js /codes ISR revalidate -> code visible" },
+    ],
+  },
+};
+
+function TraceSimulator() {
+  const [active, setActive] = useState<TraceKey | null>(null);
+  const [lines, setLines] = useState<TraceLine[]>([]);
+  const [packetPos, setPacketPos] = useState(0); // 0..1
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const queueRef = useRef<TraceKey[]>([]);
+
+  const clearTimers = useCallback(() => {
+    timers.current.forEach((t) => clearTimeout(t));
+    timers.current = [];
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimers();
+  }, [clearTimers]);
+
+  const runTrace = useCallback(
+    (key: TraceKey, onDone?: () => void) => {
+      clearTimers();
+      setActive(key);
+      setLines([]);
+      setPacketPos(0);
+      const trace = TRACES[key];
+      const total = trace.lines.length;
+      // Total visual duration ~3.2s
+      const step = 3200 / total;
+      trace.lines.forEach((ln, i) => {
+        const tm = setTimeout(() => {
+          setLines((prev) => [...prev, ln]);
+          setPacketPos((i + 1) / total);
+        }, step * (i + 1));
+        timers.current.push(tm);
+      });
+      const endTm = setTimeout(() => {
+        if (onDone) onDone();
+      }, step * total + 250);
+      timers.current.push(endTm);
+    },
+    [clearTimers]
+  );
+
+  const runOne = useCallback(
+    (key: TraceKey) => {
+      queueRef.current = [];
+      runTrace(key);
+    },
+    [runTrace]
+  );
+
+  const runAll = useCallback(() => {
+    const order: TraceKey[] = ["stat", "reddit", "locker"];
+    queueRef.current = [...order];
+    const step = () => {
+      const next = queueRef.current.shift();
+      if (!next) return;
+      runTrace(next, () => {
+        setTimeout(step, 400);
+      });
+    };
+    step();
+  }, [runTrace]);
+
+  const tone = active ? TRACES[active].tone : "ink";
+  const stages: StageKey[] = ["sources", "fivetran", "mdls", "snowflake", "serve"];
+
+  return (
+    <div className="border border-line bg-surface/60">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line/60 p-3">
+        {(Object.keys(TRACES) as TraceKey[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => runOne(k)}
+            className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition ${
+              active === k
+                ? "border-ice bg-ice/10 text-ice"
+                : "border-line bg-bg text-ink hover:border-muted"
+            }`}
+            style={{ minHeight: 32 }}
+          >
+            {TRACES[k].label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={runAll}
+          className="ml-auto border border-flame/60 bg-bg px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-flame hover:bg-flame/10"
+          style={{ minHeight: 32 }}
+        >
+          ▶ trace all
+        </button>
+      </div>
+
+      <div className="grid gap-0 md:grid-cols-[1fr_minmax(0,1.2fr)]">
+        {/* Track */}
+        <div className="relative border-b border-line/60 p-4 md:border-b-0 md:border-r">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-wider text-muted">
+            packet track
+          </div>
+          <div className="relative">
+            <div className="grid grid-cols-5 gap-1 text-center">
+              {stages.map((s) => {
+                const stageInfo = STAGES.find((x) => x.key === s)!;
+                return (
+                  <div key={s} className="flex flex-col items-center gap-1.5">
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-muted">
+                      {stageInfo.short}
+                    </span>
+                    <span className="block h-3 w-3 rounded-full border border-line bg-bg" />
+                  </div>
+                );
+              })}
+            </div>
+            {/* Rail */}
+            <div className="pointer-events-none absolute left-0 right-0 top-[24px] mx-[10%] h-[2px] bg-line/70" />
+            {/* Packet */}
+            <span
+              className={`pointer-events-none absolute top-[18px] h-3 w-3 rounded-full ${toneClass(
+                tone
+              )} ${active ? "" : "opacity-30"}`}
+              style={{
+                left: `calc(10% + ${packetPos * 80}% - 6px)`,
+                transition: "left 380ms cubic-bezier(0.4, 0, 0.2, 1)",
+                boxShadow:
+                  active && packetPos > 0
+                    ? "0 0 0 4px rgba(0,229,255,0.18)"
+                    : undefined,
+              }}
+              aria-hidden
+            />
+          </div>
+          <div className="mt-4 font-mono text-[10px] text-muted">
+            {active ? (
+              <>
+                <span className="text-ink">{TRACES[active].label}</span>
+                <span className="ml-2">
+                  · step {lines.length} / {TRACES[active].lines.length}
+                </span>
+              </>
+            ) : (
+              "tap a trace button to fire a packet"
+            )}
+          </div>
+        </div>
+
+        {/* Log */}
+        <div className="p-4">
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted">
+            log
+          </div>
+          <pre className="min-h-[180px] whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-ink">
+            {lines.length === 0 ? (
+              <span className="text-muted">
+                {"// awaiting trace…\n// each line = one stage hop in the pipeline"}
+              </span>
+            ) : (
+              lines.map((ln) => (
+                <div key={ln.t}>
+                  <span className="text-muted">[{ln.t}]</span> {ln.text}
+                </div>
+              ))
+            )}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Per-stage cards
+// ───────────────────────────────────────────────────────────────────────────
+
+const STAGE_CARDS: {
+  key: StageKey;
+  n: string;
+  label: string;
+  blurb: string;
+  tech: string[];
+  lives: string;
+}[] = [
+  {
+    key: "sources",
+    n: "01",
+    label: "SOURCES",
+    blurb:
+      "Six independent producers across REST, OAuth, JSON, and HTML scrapes. Each has its own cadence, cursor, and authentication model.",
+    tech: ["REST", "OAuth2", "JSON", "HTML scrape"],
+    lives: "balldontlie · stats.nba.com · reddit r/NBA2k · ESPN · 2KRatings · locker codes aggregator.",
+  },
+  {
+    key: "fivetran",
+    n: "02",
+    label: "FIVETRAN",
+    blurb:
+      "Single Python connector per source built on the Fivetran Connector SDK. Schema + update generator + cursor state, lands rows as upserts.",
+    tech: ["fivetran-connector-sdk", "Python", "schema()", "update()"],
+    lives: "fivetran/<source>/connector.py · per-source api_key in configuration · cursor state per stream.",
+  },
+  {
+    key: "mdls",
+    n: "03",
+    label: "MDLS · Iceberg",
+    blurb:
+      "Managed Data Lake Service. Fivetran lands rows directly as Apache Iceberg tables on object storage, registered in a REST catalog.",
+    tech: ["Apache Iceberg", "Parquet", "Glue / Polaris catalog", "S3"],
+    lives: "s3://fivetran-mdls-2k-lab/bronze/<source>/<table>/ · one Iceberg table per source table · catalog snapshot on every commit.",
+  },
+  {
+    key: "snowflake",
+    n: "04",
+    label: "SNOWFLAKE-on-ICEBERG",
+    blurb:
+      "Snowflake reads the MDLS Iceberg tables in place via an external volume and catalog integration. No copy, no re-ingest.",
+    tech: ["EXTERNAL VOLUME", "CATALOG INTEGRATION", "table_type='iceberg'", "dbt-snowflake"],
+    lives: "external volume mdls_ext_vol · catalog integration polaris_catalog_int · dbt writes new marts back to Iceberg in the same lake.",
+  },
+  {
+    key: "serve",
+    n: "05",
+    label: "dbt → Next.js",
+    blurb:
+      "dbt builds staging views, intermediate tables, and incremental marts on Snowflake-on-Iceberg. Next.js App Router consumes the marts via ISR.",
+    tech: ["dbt-snowflake", "incremental merge", "Next.js App Router", "ISR"],
+    lives: "dbt/models/{staging,intermediate,marts} · app/pulse, app/players, app/codes read mart_* tables.",
+  },
+];
+
+function StageIcon({ stage }: { stage: StageKey }) {
+  // CSS-drawn icons, no SVG libs.
+  if (stage === "sources") {
+    // beaker
+    return (
+      <div className="relative h-10 w-10" aria-hidden>
+        <span className="absolute left-3 top-0 h-2 w-4 border border-flame/80 bg-flame/10" />
+        <span
+          className="absolute left-1 top-2 h-7 w-8 border border-flame/80 bg-flame/5"
+          style={{ clipPath: "polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)" }}
+        />
+        <span className="absolute bottom-1 left-2 h-2 w-6 bg-flame/40" />
+      </div>
+    );
+  }
+  if (stage === "fivetran") {
+    // hexagon
+    return (
+      <div className="relative h-10 w-10" aria-hidden>
+        <span
+          className="absolute inset-0 border border-flame/80 bg-flame/10"
+          style={{
+            clipPath:
+              "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
+          }}
+        />
+      </div>
+    );
+  }
+  if (stage === "mdls") {
+    // layered cube — three stacked rhombi
+    return (
+      <div className="relative h-10 w-10" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="absolute left-1 h-3 w-8 border border-ice/80 bg-ice/10"
+            style={{
+              top: `${4 + i * 8}px`,
+              transform: "skewX(-20deg)",
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+  if (stage === "snowflake") {
+    // snowflake glyph: 3 rotated bars
+    return (
+      <div className="relative h-10 w-10" aria-hidden>
+        {[0, 60, 120].map((deg) => (
+          <span
+            key={deg}
+            className="absolute left-1/2 top-1/2 h-[2px] w-8 bg-gold"
+            style={{
+              transform: `translate(-50%, -50%) rotate(${deg}deg)`,
+            }}
+          />
+        ))}
+        <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold" />
+      </div>
+    );
+  }
+  // dbt: forked branch
+  return (
+    <div className="relative h-10 w-10" aria-hidden>
+      <span className="absolute bottom-1 left-1 h-2 w-2 rounded-full bg-lime" />
+      <span
+        className="absolute left-2 top-2 h-[2px] w-6 bg-lime"
+        style={{ transform: "rotate(-30deg)", transformOrigin: "left center" }}
+      />
+      <span
+        className="absolute left-2 top-2 h-[2px] w-6 bg-lime"
+        style={{ transform: "rotate(30deg)", transformOrigin: "left center" }}
+      />
+      <span className="absolute right-1 top-0 h-2 w-2 rounded-full bg-lime" />
+      <span className="absolute bottom-1 right-1 h-2 w-2 rounded-full bg-lime" />
+    </div>
+  );
+}
+
+function StageCards() {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+      {STAGE_CARDS.map((c) => (
+        <div
+          key={c.key}
+          className="flex flex-col border border-line bg-surface p-4"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted num">
+                {c.n}
+              </div>
+              <div className="mt-1 font-display text-xl leading-none tracking-wide text-ink">
+                {c.label}
+              </div>
+            </div>
+            <StageIcon stage={c.key} />
+          </div>
+          <p className="mt-3 text-[11.5px] leading-snug text-muted">{c.blurb}</p>
+          <div className="mt-3">
+            <div className="text-[9px] uppercase tracking-wider text-muted">tech</div>
+            <div className="mt-1 flex flex-wrap gap-1 font-mono text-[10.5px] text-ink">
+              {c.tech.map((t) => (
+                <span key={t} className="border border-line/60 bg-bg px-1.5 py-0.5">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-[9px] uppercase tracking-wider text-muted">
+              what lives here
+            </div>
+            <div className="mt-1 font-mono text-[11px] leading-snug text-ink">
+              {c.lives}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Page
 // ───────────────────────────────────────────────────────────────────────────
 
 export default function StackPage() {
   return (
     <div className="space-y-8">
+      <DiagramStyles />
       <HeaderStrip />
+
+      <section>
+        <H n="00" title="architecture" hint="sources → fivetran sdk → mdls iceberg → snowflake → dbt → app" />
+        <AnimatedArchitecture />
+      </section>
+
+      <section>
+        <H n="00b" title="trace a row" hint="simulate a single packet through the pipeline" />
+        <TraceSimulator />
+      </section>
+
+      <section>
+        <H n="00c" title="stages" hint="five steps · tech · what lives at each layer" />
+        <StageCards />
+      </section>
 
       <section>
         <H n="01" title="lifecycle" hint="generation → ingestion → storage → engine → transformation → serving" />
