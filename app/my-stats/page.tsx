@@ -33,6 +33,33 @@ import {
 
 type Filter = "all" | "W" | "L";
 type SortKey = "date" | "pts" | "plusMinus" | "fgPct";
+type ChartRange = 7 | 14 | 30 | "all";
+
+const CHART_RANGE_KEY = "2klab.myStats.chartRange";
+const CHART_RANGES: ChartRange[] = [7, 14, 30, "all"];
+
+function loadChartRange(): ChartRange {
+  if (typeof window === "undefined") return 7;
+  try {
+    const raw = window.localStorage.getItem(CHART_RANGE_KEY);
+    if (!raw) return 7;
+    if (raw === "all") return "all";
+    const n = parseInt(raw, 10);
+    if (n === 7 || n === 14 || n === 30) return n;
+    return 7;
+  } catch {
+    return 7;
+  }
+}
+
+function saveChartRange(r: ChartRange): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHART_RANGE_KEY, String(r));
+  } catch {
+    /* noop */
+  }
+}
 
 const EMPTY_FORM: GameInput = {
   date: todayISO(),
@@ -72,6 +99,7 @@ export default function MyStatsPage() {
   const [coachGoal, setCoachGoal] = useState("");
   const [copied, setCopied] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [chartRange, setChartRange] = useState<ChartRange>(7);
   const prTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,11 +111,17 @@ export default function MyStatsPage() {
 
   useEffect(() => {
     refresh();
+    setChartRange(loadChartRange());
     setHydrated(true);
     return () => {
       if (prTimer.current) clearTimeout(prTimer.current);
     };
   }, [refresh]);
+
+  const onChangeChartRange = (r: ChartRange) => {
+    setChartRange(r);
+    saveChartRange(r);
+  };
 
   // ---------- Save / Edit ---------------------------------------------------
 
@@ -454,10 +488,41 @@ export default function MyStatsPage() {
       </Section>
 
       {/* Trend charts */}
-      <Section title="Trends" subtitle="Last 20 games. Oldest → newest.">
+      <Section
+        title="Trends"
+        subtitle={
+          chartRange === "all"
+            ? "All games. Oldest → newest."
+            : `Last ${chartRange} games. Oldest → newest.`
+        }
+      >
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-muted">
+            Range
+          </span>
+          {CHART_RANGES.map((r) => {
+            const active = chartRange === r;
+            const label = r === "all" ? "All" : String(r);
+            return (
+              <button
+                key={String(r)}
+                type="button"
+                onClick={() => onChangeChartRange(r)}
+                aria-pressed={active}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition ${
+                  active
+                    ? "border-flame bg-flame/10 text-flame"
+                    : "border-line bg-surface2 text-muted hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         {hydrated && games.length >= 2 ? (
           <Card>
-            <Trends games={games} />
+            <Trends games={games} range={chartRange} />
           </Card>
         ) : (
           <Card>
@@ -815,14 +880,21 @@ function NumberInput({
 
 // ---------- Trends (small multiples) --------------------------------------
 
-function Trends({ games }: { games: GameLog[] }) {
-  // last 20 chronological (oldest → newest)
+function Trends({
+  games,
+  range,
+}: {
+  games: GameLog[];
+  range: ChartRange;
+}) {
+  // chronological (oldest → newest), windowed by range.
   const chrono = useMemo(() => {
     const sorted = [...games].sort(
       (a, b) => a.date.localeCompare(b.date) || a.ts - b.ts,
     );
-    return sorted.slice(Math.max(0, sorted.length - 20));
-  }, [games]);
+    if (range === "all") return sorted;
+    return sorted.slice(Math.max(0, sorted.length - range));
+  }, [games, range]);
 
   const pts = chrono.map((g) => g.pts);
   const fg = chrono.map((g) => fgPct(g) ?? 0);

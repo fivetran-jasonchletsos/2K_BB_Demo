@@ -82,6 +82,26 @@ function tierTextStyle(tier: TierDef): React.CSSProperties {
   return { color: tier.color };
 }
 
+// ---------- Sort criteria within a tier ----------
+// Met criteria first (so checkmarks group together at the top), then unmet
+// ordered by closest-to-threshold ratio (highest cur/threshold first).
+function sortedCriteria(
+  tier: TierDef,
+  snap: MasterySnapshot,
+): Criterion[] {
+  const decorated = tier.criteria.map((cr) => {
+    const cur = cr.currentValueFn(snap);
+    const met = cur >= cr.threshold;
+    const ratio = cr.threshold > 0 ? Math.min(1, cur / cr.threshold) : 0;
+    return { cr, met, ratio };
+  });
+  decorated.sort((a, b) => {
+    if (a.met !== b.met) return a.met ? -1 : 1; // met first
+    return b.ratio - a.ratio; // closer-to-met before further-away
+  });
+  return decorated.map((x) => x.cr);
+}
+
 // ---------- Skeleton ----------
 
 function Skeleton() {
@@ -227,7 +247,7 @@ function TierCardItem({
       {expanded && (
         <div className="border-t border-line pl-5 pr-4 py-3">
           <ul className="divide-y divide-line/60">
-            {tier.criteria.map((cr) => (
+            {sortedCriteria(tier, snapshot).map((cr) => (
               <CriterionRow key={cr.key} criterion={cr} snapshot={snapshot} />
             ))}
           </ul>
@@ -370,9 +390,12 @@ export default function PathPage() {
                   }}
                 />
               </div>
-              {estimate && (
-                <div className="mt-2 text-[11px] text-ice">{estimate}</div>
-              )}
+              <div className="mt-2 flex items-center gap-2 text-[11px]">
+                <span className="uppercase tracking-wider text-muted">
+                  Est. time to next tier
+                </span>
+                <span className="text-ice">{estimate ?? "—"}</span>
+              </div>
 
               {/* Top unmet criteria */}
               {result.nextCriteria.length > 0 && (

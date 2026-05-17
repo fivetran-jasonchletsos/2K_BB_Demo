@@ -21,6 +21,7 @@ import {
   toggleDoneToday,
   type CoachAction,
   type CoachReport,
+  type MasteryTierLabel,
 } from "@/lib/coach";
 import {
   loadState as loadDiagnosticState,
@@ -114,9 +115,8 @@ export default function CoachPage() {
   const [goalInput, setGoalInput] = useState("");
   const [editingGoal, setEditingGoal] = useState(false);
   const [done, setDone] = useState<string[]>([]);
-  const [tier, setTier] = useState<"Bronze" | "Silver" | "Gold" | "Platinum">(
-    "Bronze",
-  );
+  const [tier, setTier] = useState<MasteryTierLabel>("ROOKIE");
+  const [stuckExpanded, setStuckExpanded] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [diagnostic, setDiagnostic] = useState<DiagnosticState | null>(null);
 
@@ -438,14 +438,27 @@ export default function CoachPage() {
             </div>
             {hydrated ? (
               stuck.length > 0 ? (
-                <ul className="space-y-1.5 text-sm text-ink">
-                  {stuck.map((s, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="mt-0.5 text-flame">▲</span>
-                      <span className="font-mono">{s}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="space-y-1.5 text-sm text-ink">
+                    {(stuckExpanded ? stuck : stuck.slice(0, 3)).map((s, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="mt-0.5 text-flame">▲</span>
+                        <span className="font-mono">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {stuck.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setStuckExpanded((v) => !v)}
+                      className="mt-2 text-[11px] uppercase tracking-wider text-muted hover:text-flame"
+                    >
+                      {stuckExpanded
+                        ? "show less"
+                        : `+${stuck.length - 3} more`}
+                    </button>
+                  )}
+                </>
               ) : (
                 <div className="font-mono text-sm text-muted">
                   Nothing flagged.

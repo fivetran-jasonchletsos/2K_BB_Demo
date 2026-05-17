@@ -61,12 +61,14 @@ export default function ConnectPage() {
   const [anthSaved, setAnthSaved] = useState(false);
   const [anthShow, setAnthShow] = useState(false);
   const [anthTest, setAnthTest] = useState<TestState>({ kind: "idle" });
+  const [anthAutoPill, setAnthAutoPill] = useState(false);
 
   // balldontlie
   const [bdlKey, setBdlKey] = useState("");
   const [bdlSaved, setBdlSaved] = useState(false);
   const [bdlShow, setBdlShow] = useState(false);
   const [bdlTest, setBdlTest] = useState<TestState>({ kind: "idle" });
+  const [bdlAutoPill, setBdlAutoPill] = useState(false);
 
   useEffect(() => {
     const ak = loadAnthropicKey();
@@ -88,6 +90,14 @@ export default function ConnectPage() {
     saveAnthropicKey(anthKey);
     setAnthSaved(!!anthKey.trim());
     setAnthTest({ kind: "idle" });
+  }
+  function handleBlurAnth() {
+    const k = anthKey.trim();
+    if (!k) return;
+    saveAnthropicKey(k);
+    setAnthSaved(true);
+    setAnthAutoPill(true);
+    setTimeout(() => setAnthAutoPill(false), 2000);
   }
   function handleClearAnth() {
     clearAnthropicKey();
@@ -144,6 +154,14 @@ export default function ConnectPage() {
     saveBdlKey(bdlKey);
     setBdlSaved(!!bdlKey.trim());
     setBdlTest({ kind: "idle" });
+  }
+  function handleBlurBdl() {
+    const k = bdlKey.trim();
+    if (!k) return;
+    saveBdlKey(k);
+    setBdlSaved(true);
+    setBdlAutoPill(true);
+    setTimeout(() => setBdlAutoPill(false), 2000);
   }
   function handleClearBdl() {
     clearBdlKey();
@@ -205,6 +223,7 @@ export default function ConnectPage() {
               type={anthShow ? "text" : "password"}
               value={anthKey}
               onChange={(e) => setAnthKey(e.target.value)}
+              onBlur={handleBlurAnth}
               placeholder="sk-ant-…"
               autoComplete="off"
               spellCheck={false}
@@ -217,6 +236,11 @@ export default function ConnectPage() {
             >
               {anthShow ? "hide" : "show"}
             </button>
+            {anthAutoPill && (
+              <Pill tone="lime" className="!text-[10px]">
+                saved
+              </Pill>
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -279,6 +303,7 @@ export default function ConnectPage() {
               type={bdlShow ? "text" : "password"}
               value={bdlKey}
               onChange={(e) => setBdlKey(e.target.value)}
+              onBlur={handleBlurBdl}
               placeholder="paste key or leave blank for free tier"
               autoComplete="off"
               spellCheck={false}
@@ -291,6 +316,11 @@ export default function ConnectPage() {
             >
               {bdlShow ? "hide" : "show"}
             </button>
+            {bdlAutoPill && (
+              <Pill tone="lime" className="!text-[10px]">
+                saved
+              </Pill>
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -327,30 +357,10 @@ export default function ConnectPage() {
         <div className="font-display text-lg tracking-wide text-ink">
           Storage &amp; security
         </div>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
-          <li>
-            Keys live in your browser&apos;s localStorage. They are not sent
-            to any 2K LAB server.
-          </li>
-          <li>
-            The Anthropic key is used by{" "}
-            <Link href="/ai" className="text-ice hover:text-ink">
-              /ai
-            </Link>{" "}
-            for direct browser-to-Anthropic requests.
-          </li>
-          <li>
-            The balldontlie key is used by{" "}
-            <Link href="/pulse" className="text-ice hover:text-ink">
-              /pulse
-            </Link>{" "}
-            Live mode for direct browser-to-balldontlie requests.
-          </li>
-          <li>
-            Clearing keys here also removes them from localStorage on this
-            device.
-          </li>
-        </ul>
+        <p className="mt-2 text-xs text-muted">
+          Your keys stay on your device. They never hit any server except
+          Anthropic / balldontlie. Wipe with one tap.
+        </p>
       </Card>
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-4 font-mono text-[11px] uppercase tracking-wider text-muted">

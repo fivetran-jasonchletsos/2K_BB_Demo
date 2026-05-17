@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -7,6 +8,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import {
   AI_MODEL,
@@ -29,6 +31,10 @@ const SUGGESTED_PROMPTS = [
   "Why is Quickdraw S-tier?",
   "What patch nerfs happened in 1.7?",
   "Daily routine to hit Diamond rep in 2 weeks?",
+  "How do I do a step-back 3 with Curry's jumper?",
+  "Best counter to a pick-and-roll lob?",
+  "How do I cancel a dunk animation mid-air?",
+  "Defensive stick combo against post-up centers",
 ];
 
 type Props = {
@@ -42,7 +48,7 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReactNode | null>(null);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
@@ -148,7 +154,18 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
       } catch (err: unknown) {
         const e = err as { status?: number; message?: string };
         if (e?.status === 401 || /401|invalid/i.test(e?.message || "")) {
-          setError("API key rejected. Set a valid key.");
+          setError(
+            <>
+              API key doesn&apos;t work. Check it on{" "}
+              <Link
+                href="/connect"
+                className="underline underline-offset-2 hover:text-ink"
+              >
+                /connect
+              </Link>
+              .
+            </>,
+          );
         } else if (e?.status === 429) {
           setError("Rate limited. Wait a moment and try again.");
         } else if (e?.status === 529 || e?.status === 503) {

@@ -301,131 +301,53 @@ function MeetTheAgent({
   );
 
   return (
-    <div className="flex flex-col gap-8">
-      <SectionBlock
-        n="1"
-        title="What is an AI agent?"
-      >
-        <p className="text-sm leading-relaxed text-ink">
-          An AI agent is a language model wrapped in a loop. It reads input,
-          thinks, calls tools if it needs them, and returns output. Unlike a
-          single ChatGPT prompt, an agent can take many steps, use the web,
-          write code, or call APIs.
-        </p>
-
+    <div className="flex flex-col gap-6">
+      <SectionBlock n="1" title="The flow">
         <FlowDiagram />
       </SectionBlock>
 
-      <SectionBlock n="2" title="How this agent works">
-        <p className="mb-4 text-sm text-muted">
-          Here&apos;s what happens, in order, when you send a message in the
-          Ask tab:
-        </p>
+      <SectionBlock n="2" title="What gets sent">
         <ol className="flex flex-col gap-3">
           <StepCard
             n={1}
-            title="Your message + chat history packaged"
-            body="The chat above gets serialized as an array of {role, content} objects. Last 60 messages are kept."
-          />
-          <StepCard
-            n={2}
-            title="System prompt prepended"
-            body="The 2K Expert prompt sets voice, knowledge boundaries, and formatting rules. You can edit it in the Ask tab."
+            title="System prompt"
+            body="Sets voice + rules. Editable in the Ask tab."
           >
             <pre className="mt-2 max-h-40 overflow-auto rounded-md border border-line bg-bg p-2 font-mono text-[11px] leading-snug text-muted">
               {DEFAULT_SYSTEM_PROMPT}
             </pre>
           </StepCard>
           <StepCard
-            n={3}
-            title="Personalization context added"
-            body="Other tabs of this site write your handle, goal, and tier to localStorage. The agent reads them so you don't repeat yourself."
+            n={2}
+            title="Personalization context"
+            body="Handle, goal, tier — pulled from your localStorage."
           >
             <pre className="mt-2 overflow-auto rounded-md border border-line bg-bg p-2 font-mono text-[11px] leading-snug text-ink">
               {contextBlock}
             </pre>
           </StepCard>
-          <StepCard
-            n={4}
-            title="Sent to Claude (Anthropic API)"
-            body={`Model: ${AI_MODEL}. The call goes directly from your browser to api.anthropic.com using your key.`}
-          >
-            <pre className="mt-2 overflow-auto rounded-md border border-line bg-bg p-2 font-mono text-[11px] leading-snug text-ice">
-              {`import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic({
-  apiKey,                       // your key, browser-only
-  dangerouslyAllowBrowser: true,
-});
-
-const stream = client.messages.stream({
-  model: "${AI_MODEL}",
-  max_tokens: 1024,
-  system: fullSystemPrompt,
-  messages: chatHistory,
-});
-
-stream.on("text", (delta) => render(delta));
-await stream.finalMessage();`}
-            </pre>
-          </StepCard>
-          <StepCard
-            n={5}
-            title="Claude generates a response token by token"
-            body="Tokens are word-fragments. The model picks the next one based on everything before it. It's not retrieving an answer — it's generating one."
-          />
-          <StepCard
-            n={6}
-            title="Streamed back to your screen"
-            body="Each delta appends to the message bubble in real time. That's why text appears mid-sentence."
-          />
         </ol>
+        <div className="mt-2 text-[11px] text-muted">
+          Model: <span className="text-ink">{AI_MODEL}</span>. Browser →
+          api.anthropic.com, your key only.
+        </div>
       </SectionBlock>
 
       <SectionBlock n="3" title="Why it matters">
-        <ul className="flex flex-col gap-2 text-sm text-ink">
-          <li className="rounded-md border border-line bg-surface p-3">
-            An agent doesn&apos;t replace you — it loops with you.
-          </li>
-          <li className="rounded-md border border-line bg-surface p-3">
-            Tools + a model = you can build any specialized helper (coding, 2K,
-            homework).
-          </li>
-          <li className="rounded-md border border-line bg-surface p-3">
-            Today: chat. Tomorrow: agents that browse Reddit for patch notes,
-            scrape 2KMTCentral, and update your build automatically.
-          </li>
+        <ul className="flex flex-col gap-1.5 text-sm text-ink">
+          <li>· Loops with you, not at you.</li>
+          <li>· Tools + model = any specialized helper.</li>
+          <li>· Today chat. Tomorrow: patch-note crawlers.</li>
+          <li>· Same plumbing powers /coach&apos;s weekly plan.</li>
         </ul>
       </SectionBlock>
 
       <SectionBlock n="4" title="Limitations">
-        <ul className="flex flex-col gap-2 text-sm text-ink">
-          <li className="rounded-md border border-line bg-surface p-3">
-            <span className="font-display tracking-wider text-flame">
-              Knowledge cutoff.
-            </span>{" "}
-            The model only knows what was in its training data. New patches
-            after that date are invisible to it.
-          </li>
-          <li className="rounded-md border border-line bg-surface p-3">
-            <span className="font-display tracking-wider text-flame">
-              No internet access in this version.
-            </span>{" "}
-            It can&apos;t fetch live patch notes or stats.
-          </li>
-          <li className="rounded-md border border-line bg-surface p-3">
-            <span className="font-display tracking-wider text-flame">
-              No memory across sessions.
-            </span>{" "}
-            History is saved locally for you, but never used as context for the
-            model beyond the current chat.
-          </li>
-          <li className="rounded-md border border-line bg-surface p-3">
-            <span className="font-display tracking-wider text-flame">
-              Can hallucinate.
-            </span>{" "}
-            Verify in-game before grinding VC.
-          </li>
+        <ul className="flex flex-col gap-1.5 text-sm text-ink">
+          <li>· Knowledge cutoff — new patches invisible.</li>
+          <li>· No live internet in this version.</li>
+          <li>· No memory across chats.</li>
+          <li>· Can hallucinate — verify in-game.</li>
         </ul>
       </SectionBlock>
     </div>

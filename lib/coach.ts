@@ -331,15 +331,55 @@ function pickStableThree(actions: CoachAction[], seed: string): CoachAction[] {
   return sorted.slice(0, 3);
 }
 
-export function getMasteryTier(): "Bronze" | "Silver" | "Gold" | "Platinum" {
+export type MasteryTierLabel =
+  | "ROOKIE"
+  | "PRO"
+  | "STARTER"
+  | "ALL-STAR"
+  | "ALL-NBA"
+  | "SUPERSTAR"
+  | "ELITE"
+  | "HALL OF FAME"
+  | "LEGEND"
+  | "99 CLUB"
+  | "GOAT";
+
+// Map of stored path tier id -> display label (2K-native).
+const TIER_ID_TO_LABEL: Record<string, MasteryTierLabel> = {
+  bronze: "ROOKIE",
+  silver: "PRO",
+  gold: "STARTER",
+  emerald: "ALL-STAR",
+  sapphire: "ALL-NBA",
+  ruby: "SUPERSTAR",
+  amethyst: "ELITE",
+  diamond: "HALL OF FAME",
+  "pink-diamond": "LEGEND",
+  "galaxy-opal": "99 CLUB",
+  "dark-matter": "GOAT",
+};
+
+export function getMasteryTier(): MasteryTierLabel {
   const stored = (readString(KEYS.pathTier) ?? "").trim();
-  if (
-    stored === "Bronze" ||
-    stored === "Silver" ||
-    stored === "Gold" ||
-    stored === "Platinum"
-  ) {
-    return stored;
+  if (stored) {
+    // Stored as kebab-case TierId from /path.
+    if (TIER_ID_TO_LABEL[stored]) return TIER_ID_TO_LABEL[stored];
+    // Tolerate already-formatted display labels and legacy values.
+    const up = stored.toUpperCase();
+    const known: MasteryTierLabel[] = [
+      "ROOKIE",
+      "PRO",
+      "STARTER",
+      "ALL-STAR",
+      "ALL-NBA",
+      "SUPERSTAR",
+      "ELITE",
+      "HALL OF FAME",
+      "LEGEND",
+      "99 CLUB",
+      "GOAT",
+    ];
+    if ((known as string[]).includes(up)) return up as MasteryTierLabel;
   }
   // Heuristic: combine shot volume, scenario optimal%, and streak.
   const shot = loadShotRecords();
@@ -349,29 +389,51 @@ export function getMasteryTier(): "Bronze" | "Silver" | "Gold" | "Platinum" {
     prog.played > 0 ? Math.round((prog.optimal / prog.played) * 100) : 0;
   const streak = readNumber(KEYS.scenarioDailyStreak);
   let score = 0;
-  if (greens >= 500) score += 2;
+  if (greens >= 2000) score += 3;
+  else if (greens >= 500) score += 2;
   else if (greens >= 100) score += 1;
-  if (pctOpt >= 75) score += 2;
+  if (pctOpt >= 80) score += 3;
+  else if (pctOpt >= 70) score += 2;
   else if (pctOpt >= 50) score += 1;
-  if (streak >= 7) score += 2;
+  if (streak >= 14) score += 3;
+  else if (streak >= 7) score += 2;
   else if (streak >= 3) score += 1;
-  if (score >= 5) return "Platinum";
-  if (score >= 3) return "Gold";
-  if (score >= 1) return "Silver";
-  return "Bronze";
+  // 0..9 score -> 11 tiers.
+  if (score >= 9) return "GOAT";
+  if (score >= 8) return "99 CLUB";
+  if (score >= 7) return "LEGEND";
+  if (score >= 6) return "HALL OF FAME";
+  if (score >= 5) return "ELITE";
+  if (score >= 4) return "SUPERSTAR";
+  if (score >= 3) return "ALL-NBA";
+  if (score >= 2) return "ALL-STAR";
+  if (score >= 1) return "STARTER";
+  if (greens > 0 || prog.played > 0) return "PRO";
+  return "ROOKIE";
 }
 
-export function tierRingClass(
-  tier: "Bronze" | "Silver" | "Gold" | "Platinum"
-): string {
+export function tierRingClass(tier: MasteryTierLabel): string {
   switch (tier) {
-    case "Platinum":
+    case "GOAT":
+    case "99 CLUB":
+      return "ring-2 ring-flame/70 text-flame";
+    case "LEGEND":
+      return "ring-2 ring-flame/60 text-flame";
+    case "HALL OF FAME":
       return "ring-2 ring-ice/70 text-ice";
-    case "Gold":
+    case "ELITE":
+      return "ring-2 ring-ice/60 text-ice";
+    case "SUPERSTAR":
+      return "ring-2 ring-flame/60 text-flame";
+    case "ALL-NBA":
+      return "ring-2 ring-ice/60 text-ice";
+    case "ALL-STAR":
+      return "ring-2 ring-lime/60 text-lime";
+    case "STARTER":
       return "ring-2 ring-gold/70 text-gold";
-    case "Silver":
+    case "PRO":
       return "ring-2 ring-line text-ink";
-    case "Bronze":
+    case "ROOKIE":
     default:
       return "ring-2 ring-flame/60 text-flame";
   }
@@ -626,7 +688,9 @@ export function analyze(now: number = Date.now()): CoachReport {
 
   return {
     growing: growing.slice(0, 3),
-    stuck: stuck.slice(0, 3),
+    // Return up to 10 stuck items so the UI can choose to expand past the
+    // default 3. Use slice rather than splice so callers receive a fresh array.
+    stuck: stuck.slice(0, 10),
     tonightsThree,
     snapshot: {
       activity,

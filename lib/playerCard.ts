@@ -254,17 +254,17 @@ export function loadCardData(): CardData {
 }
 
 export const TIER_LABEL: Record<TierId, string> = {
-  bronze: "Bronze",
-  silver: "Silver",
-  gold: "Gold",
-  emerald: "Emerald",
-  sapphire: "Sapphire",
-  ruby: "Ruby",
-  amethyst: "Amethyst",
-  diamond: "Diamond",
-  pink_diamond: "Pink Diamond",
-  galaxy_opal: "Galaxy Opal",
-  dark_matter: "Dark Matter",
+  bronze: "ROOKIE",
+  silver: "PRO",
+  gold: "STARTER",
+  emerald: "ALL-STAR",
+  sapphire: "ALL-NBA",
+  ruby: "SUPERSTAR",
+  amethyst: "ELITE",
+  diamond: "HALL OF FAME",
+  pink_diamond: "LEGEND",
+  galaxy_opal: "99 CLUB",
+  dark_matter: "GOAT",
 };
 
 /**

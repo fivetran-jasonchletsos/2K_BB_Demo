@@ -263,7 +263,7 @@ const c = (
 export const TIERS: TierDef[] = [
   {
     id: "bronze",
-    name: "Bronze",
+    name: "ROOKIE",
     color: "#B08D57",
     reward: "Welcome to the lab",
     criteria: [
@@ -274,7 +274,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "silver",
-    name: "Silver",
+    name: "PRO",
     color: "#C0C0C0",
     reward: "Custom build slot lock-in",
     criteria: [
@@ -286,7 +286,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "gold",
-    name: "Gold",
+    name: "STARTER",
     color: "gold",
     isToken: true,
     reward: "Daily drill priority",
@@ -301,7 +301,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "emerald",
-    name: "Emerald",
+    name: "ALL-STAR",
     color: "#50C878",
     reward: "Combo encyclopedia access",
     criteria: [
@@ -316,7 +316,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "sapphire",
-    name: "Sapphire",
+    name: "ALL-NBA",
     color: "ice",
     isToken: true,
     reward: "Pulse watchlist alerts",
@@ -333,7 +333,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "ruby",
-    name: "Ruby",
+    name: "SUPERSTAR",
     color: "#E0115F",
     reward: "Advanced scenario unlocks",
     criteria: [
@@ -350,7 +350,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "amethyst",
-    name: "Amethyst",
+    name: "ELITE",
     color: "#9966CC",
     reward: "Cross-category mastery badge",
     criteria: [
@@ -372,7 +372,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "diamond",
-    name: "Diamond",
+    name: "HALL OF FAME",
     color: "#B9F2FF",
     reward: "Friend challenge code prefix changes",
     criteria: [
@@ -394,9 +394,9 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "pink-diamond",
-    name: "Pink Diamond",
+    name: "LEGEND",
     color: "#FFB6C1",
-    reward: "Pink Diamond profile flair",
+    reward: "Legend profile flair",
     criteria: [
       c("scen400", "Play scenarios", 400, (s) => s.scenariosPlayed, "scenarios"),
       c("pct78", "Optimal rate", 78, (s) => s.scenariosOptimalPct, "%"),
@@ -409,10 +409,10 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "galaxy-opal",
-    name: "Galaxy Opal",
+    name: "99 CLUB",
     color: "#FF3D00",
     gradient: "linear-gradient(135deg, #FFB6C1 0%, #9966CC 50%, #00E5FF 100%)",
-    reward: "Galaxy Opal profile flair",
+    reward: "99 Club profile flair",
     criteria: [
       c("scen500", "Play scenarios", 500, (s) => s.scenariosPlayed, "scenarios"),
       c("pct80", "Optimal rate", 80, (s) => s.scenariosOptimalPct, "%"),
@@ -432,7 +432,7 @@ export const TIERS: TierDef[] = [
   },
   {
     id: "dark-matter",
-    name: "Dark Matter",
+    name: "GOAT",
     color: "#FF3D00",
     gradient:
       "linear-gradient(135deg, #FF3D00 0%, #FFD60A 33%, #00E5FF 66%, #9966CC 100%)",
@@ -594,12 +594,15 @@ export function estimateDaysToNext(
   if (result.total === 0) return null;
   if (result.met === result.total) return null;
 
-  // Very rough: assume the user maintains roughly current daily-drill streak
-  // pace. If no daily streak yet, fall back to a generic range tied to how many
-  // criteria remain.
+  // Per-day pace signal: the daily-drill streak is our best proxy for
+  // consistent engagement. If there's no streak yet, we can't extrapolate.
+  const dailyPace = snap.scenariosDailyStreak || 0;
+  if (dailyPace <= 0) return "—";
+
   const remaining = result.total - result.met;
-  const dailyPace = Math.max(1, snap.scenariosDailyStreak || 1);
-  const lo = Math.max(1, Math.round(remaining / Math.max(1, dailyPace / 2)));
-  const hi = lo + Math.max(2, remaining);
-  return `${lo}-${hi} days at current pace`;
+  // Heuristic: at pace, the user closes ~1 criterion per (3 / dailyPace) days.
+  // Higher streak -> faster closure.
+  const daysPerCrit = Math.max(1, Math.round(3 / Math.max(1, dailyPace / 3)));
+  const days = Math.max(1, remaining * daysPerCrit);
+  return `~${days} day${days === 1 ? "" : "s"} to next tier`;
 }
