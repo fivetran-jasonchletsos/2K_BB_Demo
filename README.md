@@ -31,9 +31,11 @@ To deploy publicly: push to GitHub, import the repo at https://vercel.com — on
 ## ODI demo angle
 
 Real architecture — Fivetran SDK lands six sources into **MDLS** (Managed
-Data Lake Service: S3 + Iceberg + catalog), and any compute engine reads
-the same Iceberg tables. dbt runs against whichever engine is wired up;
-Next.js consumes either pre-built JSON snapshots or a live engine query.
+Data Lake Service: S3 + Iceberg + catalog). **Snowflake-on-Iceberg** is
+the primary read engine: it attaches to the MDLS Polaris catalog via an
+external volume + catalog integration, dbt runs there, and Next.js
+consumes the marts. Athena, Databricks, and Trino can read the same
+Iceberg tables from the same catalog if needed — no re-ingest.
 
 ```
    Sources                  Fivetran SDK
@@ -51,47 +53,47 @@ Next.js consumes either pre-built JSON snapshots or a live engine query.
                        │  S3 · Apache Iceberg · Glue/Polaris Catalog  │
                        │  bronze_<source>.<table>                     │
                        └─────────────────┬────────────────────────────┘
-                                         │  one Iceberg table set,
-                                         │  many readers
-                          ┌──────────────┼──────────────┐
-                          ▼              ▼              ▼              ▼
-                    ┌──────────┐  ┌──────────┐   ┌──────────┐   ┌──────────┐
-                    │Snowflake │  │  Athena  │   │Databricks│   │  Trino   │
-                    │on-Iceberg│  │          │   │          │   │          │
-                    └────┬─────┘  └────┬─────┘   └────┬─────┘   └────┬─────┘
-                         └─────────────┴───────┬──────┴──────────────┘
-                                               ▼
-                                       ┌────────────────┐
-                                       │  dbt           │
-                                       │  multi-engine  │
-                                       │  Snowflake +   │
-                                       │  Athena profiles│
-                                       │  stg/int/marts │
-                                       └───────┬────────┘
-                                               ▼
-                                       ┌────────────────┐
-                                       │  Next.js       │
-                                       │  /pulse,       │
-                                       │  /players,     │
-                                       │  /stack        │
-                                       │  (JSON snapshot│
-                                       │   or live query)│
-                                       └────────────────┘
+                                         │  one Iceberg catalog
+                                         ▼
+                              ┌─────────────────────────┐
+                              │  Snowflake-on-Iceberg   │  <-- primary
+                              │  external volume +      │      read engine
+                              │  catalog integration    │
+                              │  (table_type='iceberg') │
+                              └───────────┬─────────────┘
+                                          ▼
+                                  ┌────────────────┐
+                                  │  dbt           │
+                                  │  on Snowflake- │
+                                  │  on-Iceberg    │
+                                  │  stg/int/marts │
+                                  └───────┬────────┘
+                                          ▼
+                                  ┌────────────────┐
+                                  │  Next.js       │
+                                  │  /pulse,       │
+                                  │  /players,     │
+                                  │  /stack        │
+                                  └────────────────┘
+
+   ┌─ Compatible (catalog-readable, not the active dbt target) ──────────┐
+   │  Athena  ·  Databricks SQL  ·  Trino                                │
+   │  attach to the same Polaris/Glue Iceberg catalog · same tables      │
+   └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Why MDLS
 
 One Iceberg table set, written once by the Fivetran connectors, readable
-by any engine with an Iceberg catalog client. No engine lock-in: the same
-mart definitions run on Snowflake-on-Iceberg or Athena (and could be
-pointed at Databricks or Trino without re-ingesting). The demo can be
-shown against whichever compute platform the audience cares about.
+by any engine with an Iceberg catalog client. We demo
+Snowflake-on-Iceberg here. Athena, Databricks, and Trino read the same
+catalog if needed — no re-ingest.
 
 - `fivetran/connectors/` — 6 Fivetran Connector SDK custom connectors (Python).
-- `dbt/` — 7 staging models, 2 intermediates, 3 marts; profiles for
-  Snowflake-on-Iceberg (primary) and Athena (alternative), same model SQL
-  on both. Key mart: `mart_rating_predictions` (player_id, predicted_delta,
-  confidence, primary_driver).
+- `dbt/` — 7 staging models, 2 intermediates, 3 marts. Primary target is
+  Snowflake-on-Iceberg; Athena is retained as an alternative profile for
+  multi-engine demos. Key mart: `mart_rating_predictions` (player_id,
+  predicted_delta, confidence, primary_driver).
 - App reads marts via JSON snapshots in `public/data/`; if an MDLS
   destination + engine are configured, the same shape is served from a
   live query.
@@ -99,8 +101,7 @@ shown against whichever compute platform the audience cares about.
 ## Stack
 
 - **Data layer** — Fivetran SDK + MDLS (S3 + Iceberg + Glue/Polaris catalog)
-- **Transformation** — dbt; Snowflake-on-Iceberg primary, Athena alternative,
-  same models on both
+- **Transformation** — dbt on Snowflake-on-Iceberg (Athena alternative profile retained)
 - **Frontend** — Next.js 14 (App Router) · TypeScript · Tailwind, static export
 - **Deploy** — GitHub Pages via `.github/workflows/deploy.yml`
 - **Demo data** — pre-built JSON snapshots in `public/data/`; the same

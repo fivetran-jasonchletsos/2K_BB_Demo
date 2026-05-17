@@ -18,6 +18,18 @@ import {
   getThisWeek,
 } from "@/lib/pulse";
 import { getPlayerIdByName } from "@/lib/players";
+import {
+  BDLError,
+  BDLGame,
+  BDLPlayer,
+  BDLStat,
+  fetchGames,
+  fetchPlayerRecentStats,
+  fetchPlayers,
+  loadKey as loadBdlKey,
+  saveKey as saveBdlKey,
+  todayISO,
+} from "@/lib/balldontlie";
 
 type TabId = "watchlist" | "risers" | "fallers" | "confidence" | "week";
 type SortId = "delta" | "confidence" | "form";
@@ -561,10 +573,373 @@ function WatchlistRow({
   );
 }
 
+function avgNum(stats: BDLStat[], key: keyof BDLStat): number {
+  let total = 0;
+  let count = 0;
+  for (const s of stats) {
+    const v = s[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      total += v;
+      count++;
+    }
+  }
+  return count ? total / count : 0;
+}
+
+function LiveMode() {
+  const [games, setGames] = useState<BDLGame[] | null>(null);
+  const [gamesErr, setGamesErr] = useState<string>("");
+  const [gamesLoading, setGamesLoading] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [playerLoading, setPlayerLoading] = useState(false);
+  const [playerErr, setPlayerErr] = useState<string>("");
+  const [matched, setMatched] = useState<BDLPlayer | null>(null);
+  const [recent, setRecent] = useState<BDLStat[]>([]);
+
+  const [showKeyPanel, setShowKeyPanel] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const [hasKey, setHasKey] = useState(false);
+
+  useEffect(() => {
+    setHasKey(!!loadBdlKey());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGamesLoading(true);
+    setGamesErr("");
+    fetchGames({ dates: [todayISO()], perPage: 25 })
+      .then((g) => {
+        if (!cancelled) setGames(g);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        if (e instanceof BDLError && e.status === 429) {
+          setShowKeyPanel(true);
+          setGamesErr("rate limited — add a key below to continue");
+        } else {
+          setGamesErr(e instanceof Error ? e.message : "failed to load games");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGamesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = search.trim();
+    if (!q) return;
+    setPlayerLoading(true);
+    setPlayerErr("");
+    setMatched(null);
+    setRecent([]);
+    try {
+      const res = await fetchPlayers({ search: q, perPage: 5 });
+      const top = res.data[0];
+      if (!top) {
+        setPlayerErr("no players matched");
+        return;
+      }
+      setMatched(top);
+      const stats = await fetchPlayerRecentStats(top.id, 10);
+      setRecent(stats);
+    } catch (e: unknown) {
+      if (e instanceof BDLError && e.status === 429) {
+        setShowKeyPanel(true);
+        setPlayerErr("rate limited — add a key below to continue");
+      } else {
+        setPlayerErr(e instanceof Error ? e.message : "search failed");
+      }
+    } finally {
+      setPlayerLoading(false);
+    }
+  }
+
+  function handleSaveKey() {
+    saveBdlKey(keyInput);
+    setHasKey(!!keyInput.trim());
+    setShowKeyPanel(false);
+    setKeyInput("");
+  }
+
+  // Map matched player → an internal PREDICTION row (best-effort name match)
+  const internalPred = useMemo(() => {
+    if (!matched) return null;
+    const full = `${matched.first_name} ${matched.last_name}`.toLowerCase();
+    return (
+      PREDICTIONS.find((p) => p.displayName.toLowerCase() === full) ??
+      PREDICTIONS.find(
+        (p) => p.displayName.toLowerCase().includes(matched.last_name.toLowerCase()),
+      ) ??
+      null
+    );
+  }, [matched]);
+
+  // Compute recent averages from real box scores.
+  const realAvg = useMemo(() => {
+    if (!recent.length) return null;
+    return {
+      games: recent.length,
+      pts: avgNum(recent, "pts"),
+      reb: avgNum(recent, "reb"),
+      ast: avgNum(recent, "ast"),
+      stl: avgNum(recent, "stl"),
+      blk: avgNum(recent, "blk"),
+      fg_pct: avgNum(recent, "fg_pct"),
+      fg3_pct: avgNum(recent, "fg3_pct"),
+    };
+  }, [recent]);
+
+  return (
+    <Section
+      title="Live NBA data"
+      subtitle="Real-time pulls from api.balldontlie.io · client-side only"
+      right={
+        <Pill tone={hasKey ? "lime" : "muted"}>
+          {hasKey ? "key set" : "no key"}
+        </Pill>
+      }
+    >
+      {/* Tonight's games (live) */}
+      <Card className="mb-3 !p-3 md:!p-4">
+        <div className="flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+            Tonight · {todayISO()}
+          </div>
+          <div className="font-mono text-[10px] text-muted">
+            {gamesLoading
+              ? "loading…"
+              : games
+                ? `${games.length} games`
+                : "—"}
+          </div>
+        </div>
+        {gamesErr && (
+          <div className="mt-2 font-mono text-[11px] text-flame">
+            {gamesErr}
+          </div>
+        )}
+        {games && games.length === 0 && !gamesErr && (
+          <div className="mt-2 font-mono text-[11px] text-muted">
+            No games scheduled today.
+          </div>
+        )}
+        {games && games.length > 0 && (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {games.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between rounded-lg border border-line bg-surface2/40 px-3 py-2 font-mono text-xs"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-display text-base text-ink">
+                    {g.visitor_team.abbreviation}
+                  </span>
+                  <span className="text-muted">@</span>
+                  <span className="font-display text-base text-ink">
+                    {g.home_team.abbreviation}
+                  </span>
+                </div>
+                <div className="text-muted tabular-nums">
+                  {g.status === "Final" || g.period > 0 ? (
+                    <span className="text-ink">
+                      {g.visitor_team_score}–{g.home_team_score}
+                    </span>
+                  ) : (
+                    <span>{g.status}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Player search */}
+      <Card className="!p-3 md:!p-4">
+        <form
+          onSubmit={handleSearch}
+          className="flex flex-wrap items-end gap-2"
+        >
+          <div className="min-w-0 flex-1">
+            <label className="block font-mono text-[10px] uppercase tracking-wider text-muted">
+              Player search
+            </label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="e.g. Luka, Tatum, SGA"
+              className="mt-1 w-full rounded-lg border border-line bg-surface2 px-3 py-2 font-mono text-sm text-ink placeholder:text-muted focus:border-ice focus:outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={playerLoading}
+            className="rounded-md border border-ice/60 bg-ice/10 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-ice hover:bg-ice/20 disabled:opacity-50"
+          >
+            {playerLoading ? "searching…" : "search"}
+          </button>
+        </form>
+        {playerErr && (
+          <div className="mt-2 font-mono text-[11px] text-flame">
+            {playerErr}
+          </div>
+        )}
+
+        {matched && realAvg && (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border border-line bg-surface2/40 p-3">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                Real · last {realAvg.games} games
+              </div>
+              <div className="mt-1 font-display text-xl tracking-wide text-ink">
+                {matched.first_name} {matched.last_name}
+              </div>
+              <div className="mt-0.5 font-mono text-[11px] text-muted">
+                {matched.team.abbreviation} · {matched.position || "—"}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[11px]">
+                <div>
+                  <div className="text-muted">PTS</div>
+                  <div className="text-ink tabular-nums">
+                    {realAvg.pts.toFixed(1)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted">REB</div>
+                  <div className="text-ink tabular-nums">
+                    {realAvg.reb.toFixed(1)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted">AST</div>
+                  <div className="text-ink tabular-nums">
+                    {realAvg.ast.toFixed(1)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted">STL</div>
+                  <div className="text-ink tabular-nums">
+                    {realAvg.stl.toFixed(1)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted">BLK</div>
+                  <div className="text-ink tabular-nums">
+                    {realAvg.blk.toFixed(1)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted">FG%</div>
+                  <div className="text-ink tabular-nums">
+                    {(realAvg.fg_pct * 100).toFixed(1)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-line bg-surface2/40 p-3">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                Internal · 2K LAB prediction
+              </div>
+              {internalPred ? (
+                <>
+                  <div className="mt-1 font-display text-xl tracking-wide text-ink">
+                    {internalPred.displayName}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[11px] text-muted">
+                    {internalPred.team} · {internalPred.position}
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[11px]">
+                    <div>
+                      <div className="text-muted">OVR</div>
+                      <div className="text-ink tabular-nums">
+                        {internalPred.currentRating}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted">Δ pred</div>
+                      <div
+                        className={`tabular-nums ${
+                          internalPred.predictedDelta > 0
+                            ? "text-lime"
+                            : internalPred.predictedDelta < 0
+                              ? "text-flame"
+                              : "text-ink"
+                        }`}
+                      >
+                        {internalPred.predictedDelta > 0 ? "+" : ""}
+                        {internalPred.predictedDelta}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted">Conf</div>
+                      <div className="text-ink tabular-nums">
+                        {Math.round(internalPred.confidence * 100)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 line-clamp-2 text-xs text-muted">
+                    {internalPred.primaryDriver}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 font-mono text-[11px] text-muted">
+                  No internal prediction available for this player. The model
+                  tracks a focused watchlist.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {showKeyPanel && (
+        <Card className="mt-3 !p-3 md:!p-4">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted">
+            Set balldontlie key
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Stored only in this browser&apos;s localStorage. Or manage from{" "}
+            <Link href="/connect" className="text-ice hover:text-ink">
+              /connect
+            </Link>
+            .
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="paste balldontlie key"
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-line bg-surface2 px-3 py-2 font-mono text-sm text-ink placeholder:text-muted focus:border-ice focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleSaveKey}
+              className="rounded-md border border-lime/60 bg-lime/10 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-lime hover:bg-lime/20"
+            >
+              save
+            </button>
+          </div>
+        </Card>
+      )}
+    </Section>
+  );
+}
+
 export default function PulsePage() {
   const [tab, setTab] = useState<TabId>("risers");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [methodologyOpen, setMethodologyOpen] = useState(false);
+  const [liveMode, setLiveMode] = useState(false);
 
   // Filters
   const [query, setQuery] = useState("");
@@ -756,6 +1131,45 @@ export default function PulsePage() {
           />
         </div>
       </header>
+
+      {/* Live mode toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface2/40 px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={liveMode}
+            onClick={() => setLiveMode((v) => !v)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border transition ${
+              liveMode
+                ? "border-lime/60 bg-lime/30"
+                : "border-line bg-surface2"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-ink transition ${
+                liveMode ? "translate-x-5" : "translate-x-0.5"
+              } translate-y-[1px]`}
+            />
+          </button>
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-ink">
+              Live mode
+            </div>
+            <div className="font-mono text-[10px] text-muted">
+              Direct browser pulls from balldontlie · keys via{" "}
+              <Link href="/connect" className="text-ice hover:text-ink">
+                /connect
+              </Link>
+            </div>
+          </div>
+        </div>
+        <Pill tone={liveMode ? "lime" : "muted"}>
+          {liveMode ? "ON" : "OFF (mock)"}
+        </Pill>
+      </div>
+
+      {liveMode && <LiveMode />}
 
       {/* Live indicator row */}
       <Card className="!p-3 md:!p-4">

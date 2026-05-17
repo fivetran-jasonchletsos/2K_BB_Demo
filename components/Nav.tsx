@@ -5,6 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export const ROUTES: { href: string; label: string; sub: string }[] = [
+  { href: "/coach", label: "Coach", sub: "Today's plan" },
+  { href: "/my-stats", label: "My Stats", sub: "Log your games" },
+  { href: "/ai", label: "AI", sub: "Ask the expert" },
+  { href: "/path", label: "Path", sub: "Mastery tiers" },
+  { href: "/diagnose", label: "Diagnose", sub: "Find your gap" },
   { href: "/builds", label: "Builds", sub: "MyPlayer optimizer" },
   { href: "/badges", label: "Badges", sub: "Tier list + filters" },
   { href: "/codes", label: "Codes", sub: "Active locker codes" },
@@ -15,6 +20,7 @@ export const ROUTES: { href: string; label: string; sub: string }[] = [
   { href: "/tips", label: "Secrets", sub: "Hidden mechanics" },
   { href: "/pulse", label: "Pulse", sub: "Live NBA → 2K" },
   { href: "/stack", label: "Stack", sub: "Data pipeline" },
+  { href: "/connect", label: "Connect", sub: "API keys" },
 ];
 
 export function Nav() {

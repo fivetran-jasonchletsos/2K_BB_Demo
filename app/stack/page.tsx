@@ -26,9 +26,14 @@ from fivetran_connector_sdk import Operations as op
 import requests
 from datetime import datetime, timezone
 
+# Lands rows into MDLS Iceberg bronze tables. The downstream dbt project
+# targets Snowflake-on-Iceberg over the same Polaris catalog.
 BASE_URL = "https://api.balldontlie.io/v1"
+DESTINATION_SCHEMA = "mdls.bronze_balldontlie"  # Iceberg, Polaris catalog
 
 def schema(configuration: dict):
+    # Bronze layout — one Iceberg table per source table. Snowflake reads
+    # these via EXTERNAL VOLUME + CATALOG INTEGRATION (table_type='iceberg').
     return [
         {"table": "players", "primary_key": ["id"]},
         {"table": "games",   "primary_key": ["id"]},
@@ -43,14 +48,23 @@ def _headers(configuration: dict) -> dict:
 
 def update(configuration: dict, state: dict):
     cursor = state.get("stats_cursor") or "1970-01-01T00:00:00Z"
-    log.info(f"balldontlie sync starting from cursor={cursor}")
+    log.info(f"balldontlie sync -> {DESTINATION_SCHEMA} (cursor={cursor})")
     yield from _sync_players(configuration)
     yield from _sync_games(configuration, state)
     yield from _sync_stats(configuration, state, cursor)`;
 
-const MART_SQL = `{{ config(
+const MART_SQL = `-- Snowflake-on-Iceberg mart. Snowflake writes Iceberg files into the
+-- MDLS external volume and registers them in the Polaris catalog
+-- integration. Athena/Databricks/Trino can read the same table from the
+-- same catalog without re-ingest.
+{{ config(
     materialized='incremental',
-    unique_key='player_id'
+    unique_key='player_id',
+    table_type='iceberg',
+    external_volume='mdls_ext_vol',
+    catalog='polaris_catalog_int',
+    base_location_subpath='marts/mart_rating_predictions',
+    on_schema_change='append_new_columns'
 ) }}
 
 with p360 as (
@@ -313,45 +327,68 @@ function SourcesBoxScore() {
 // ───────────────────────────────────────────────────────────────────────────
 
 function EnginesBlock() {
+  const primary = ENGINES.find((e) => e.status === "enabled");
+  const compatible = ENGINES.filter((e) => e.status !== "enabled");
   return (
-    <div>
-      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-        {ENGINES.map((e) => {
-          const enabled = e.status === "enabled";
-          return (
+    <div className="space-y-3">
+      {primary && (
+        <div className="border border-ice/60 bg-surface p-4 md:p-5">
+          <div className="flex flex-col gap-1 md:flex-row md:items-baseline md:justify-between">
+            <div className="flex items-baseline gap-2">
+              <span className="font-display text-2xl leading-none text-ink md:text-3xl">
+                {primary.name}
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-lime">
+                primary engine
+              </span>
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+              reads MDLS Iceberg · dbt target
+            </span>
+          </div>
+          <dl className="mt-3 grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 text-[12px] md:grid-cols-[120px_1fr]">
+            <dt className="text-muted">reader</dt>
+            <dd className="font-mono text-ink">{primary.catalogReader}</dd>
+            <dt className="text-muted">adapter</dt>
+            <dd className="font-mono text-ink">{primary.dbtAdapter}</dd>
+            <dt className="text-muted">table_type</dt>
+            <dd className="font-mono text-ink">iceberg</dd>
+          </dl>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted">
+          Compatible engines · read the same Iceberg tables via the catalog
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {compatible.map((e) => (
             <div
               key={e.id}
-              className={`border px-3 py-2 ${
-                enabled
-                  ? "border-line bg-surface"
-                  : "border-line/60 bg-surface/60"
-              }`}
+              className="border border-line/60 bg-surface/60 px-3 py-2"
             >
               <div className="flex items-baseline justify-between gap-2">
-                <span className="font-mono text-[12px] uppercase tracking-wider text-ink">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-ink">
                   {e.name}
                 </span>
-                <span
-                  className={`font-mono text-[10px] uppercase tracking-wider ${
-                    enabled ? "text-lime" : "text-muted"
-                  }`}
-                >
-                  {e.status}
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+                  compatible
                 </span>
               </div>
-              <dl className="mt-1.5 grid grid-cols-[64px_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+              <dl className="mt-1 grid grid-cols-[56px_1fr] gap-x-2 gap-y-0.5 text-[10.5px]">
                 <dt className="text-muted">reader</dt>
                 <dd className="font-mono text-ink">{e.catalogReader}</dd>
                 <dt className="text-muted">adapter</dt>
                 <dd className="font-mono text-ink">{e.dbtAdapter}</dd>
               </dl>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
-      <div className="mt-2 text-[10px] text-muted">
-        same Iceberg tables in MDLS · {ENGINES.filter((e) => e.status === "enabled").length} enabled in
-        dbt/profiles.example.yml · {ENGINES.filter((e) => e.status === "optional").length} catalog-readable but not configured
+
+      <div className="text-[10px] text-muted">
+        one Iceberg catalog in MDLS · 1 engine wired in dbt (Snowflake-on-Iceberg) ·{" "}
+        {compatible.length} catalog-readable without re-ingest
       </div>
     </div>
   );
@@ -576,7 +613,8 @@ function HeaderStrip() {
           STACK
         </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Six sources, three marts, four read engines. Iceberg-native via MDLS.
+          Six sources, three marts. Snowflake-on-Iceberg engine reading MDLS.
+          Three other engines compatible via the same catalog.
         </p>
       </div>
       <div className="flex gap-6 md:gap-8">
@@ -610,7 +648,7 @@ function LifecycleStrip() {
   return (
     <div className="relative">
       <div className="absolute left-0 right-0 top-[14px] hidden h-px bg-line md:block" aria-hidden />
-      <ol className="relative grid gap-3 md:grid-cols-5">
+      <ol className="relative grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         {LIFECYCLE_STAGES.map((s) => (
           <li key={s.n} className="relative bg-bg md:px-2">
             <div className="flex items-center gap-2">
@@ -663,7 +701,7 @@ export default function StackPage() {
       <HeaderStrip />
 
       <section>
-        <H n="01" title="lifecycle" hint="generation → ingestion → storage → transformation → serving" />
+        <H n="01" title="lifecycle" hint="generation → ingestion → storage → engine → transformation → serving" />
         <LifecycleStrip />
       </section>
 
@@ -680,7 +718,7 @@ export default function StackPage() {
         <H
           n="03"
           title="read engines"
-          hint={`${ENGINES.length} catalog-compatible · same Iceberg tables`}
+          hint="Snowflake-on-Iceberg primary · 3 compatible readers"
         />
         <EnginesBlock />
       </section>

@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Data pipeline:{" "}
               <span className="text-ink">Fivetran SDK</span> →{" "}
               <span className="text-ink">MDLS (Iceberg)</span> →{" "}
-              <span className="text-ink">multi-engine</span> →{" "}
+              <span className="text-ink">Snowflake-on-Iceberg</span> →{" "}
               <span className="text-ink">dbt</span> →{" "}
               <span className="text-ink">Next.js</span>
             </div>

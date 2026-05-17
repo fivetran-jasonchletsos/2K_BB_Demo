@@ -29,15 +29,27 @@ schema in your profile (`schema: nba`) you'll get:
 
 ## Run
 
+Primary target is `snowflake_iceberg` — Snowflake reading and writing
+Iceberg tables in MDLS via an external volume + catalog integration
+(Polaris). Athena is retained as an alt profile for multi-engine demos.
+
 ```bash
 pip install dbt-snowflake
 cp profiles.example.yml ~/.dbt/profiles.yml
-# edit account, user, password/key
+# edit account, user, password/key, external_volume, catalog
 
 cd dbt
 dbt deps
-dbt seed       # no seeds yet, but harmless
-dbt build      # runs models + tests in DAG order
+dbt seed                                 # no seeds yet, but harmless
+dbt run   --target snowflake_iceberg     # primary
+dbt build --target snowflake_iceberg     # models + tests in DAG order
+```
+
+Alt profile for multi-engine demos:
+
+```bash
+pip install dbt-athena-community
+dbt run --target athena_iceberg
 ```
 
 ## Marts

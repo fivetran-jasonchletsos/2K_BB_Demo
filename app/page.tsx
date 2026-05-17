@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ROUTES } from "@/components/Nav";
+import PlayerCard from "@/components/PlayerCard";
 import { Card, Pill, Stat } from "@/components/ui";
 import { getActiveCodes, getExpiringWithin, msUntilExpiry } from "@/lib/codes";
 import { getRisers } from "@/lib/pulse";
@@ -16,6 +17,29 @@ type SavedBuild = {
   archetypeId?: string;
   updatedAt: number;
 };
+
+const ONBOARD_STEPS: { num: number; title: string; sub: string; href: string }[] = [
+  {
+    num: 1,
+    title: "Set your handle",
+    sub: "Personalize Coach and the AI Expert.",
+    href: "/coach",
+  },
+  {
+    num: 2,
+    title: "Take the 2-minute diagnostic",
+    sub: "Find your gap, get a 14-day plan.",
+    href: "/diagnose",
+  },
+  {
+    num: 3,
+    title: "Ask the AI Expert",
+    sub: "Builds, badges, jumpers, on demand.",
+    href: "/ai",
+  },
+];
+
+const AI_DISMISS_KEY = "2klab.ai.quickChatDismissed";
 
 function pad(n: number) {
   return n.toString().padStart(2, "0");
@@ -36,6 +60,12 @@ export default function Home() {
   const [saved, setSaved] = useState<SavedBuild[] | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [copied, setCopied] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [hasDiagnose, setHasDiagnose] = useState(false);
+  const [hasName, setHasName] = useState(false);
+  const [aiApiKeySet, setAiApiKeySet] = useState(false);
+  const [aiLastAssistant, setAiLastAssistant] = useState<string | null>(null);
+  const [aiQuickDismissed, setAiQuickDismissed] = useState(false);
 
   useEffect(() => {
     try {
@@ -44,9 +74,59 @@ export default function Home() {
     } catch {
       setSaved([]);
     }
+    try {
+      setHasDiagnose(!!localStorage.getItem("2klab.diagnose"));
+    } catch {
+      /* ignore */
+    }
+    try {
+      setHasName(!!(localStorage.getItem("2klab.coach.name") || "").trim());
+    } catch {
+      /* ignore */
+    }
+    try {
+      setAiApiKeySet(!!(localStorage.getItem("2klab.ai.apiKey") || "").trim());
+    } catch {
+      /* ignore */
+    }
+    try {
+      const raw = localStorage.getItem("2klab.ai.history");
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          for (let i = arr.length - 1; i >= 0; i--) {
+            const m = arr[i];
+            if (m && m.role === "assistant" && typeof m.content === "string") {
+              setAiLastAssistant(m.content);
+              break;
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      setAiQuickDismissed(localStorage.getItem(AI_DISMISS_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+    setHydrated(true);
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  const showOnboarding = hydrated && !hasDiagnose && !hasName;
+  const showAiQuick = hydrated && aiApiKeySet && !aiQuickDismissed;
+
+  const dismissAiQuick = () => {
+    setAiQuickDismissed(true);
+    try {
+      localStorage.setItem(AI_DISMISS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  };
 
   const activeCodes = useMemo(() => getActiveCodes(now), [now]);
 
@@ -109,6 +189,95 @@ export default function Home() {
           <span className="num">8 sources</span>
         </div>
       </header>
+
+      {showOnboarding && (
+        <section aria-label="Start here">
+          <Card className="border-ice/40 bg-gradient-to-br from-ice/[0.08] via-surface to-surface">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-ice">
+              First time here?
+            </div>
+            <div className="mt-1 font-display text-2xl tracking-wide text-ink md:text-3xl">
+              Start here
+            </div>
+            <ul className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+              {ONBOARD_STEPS.map((s) => (
+                <li key={s.num}>
+                  <Link
+                    href={s.href}
+                    className="group flex items-center gap-3 rounded-lg border border-line bg-surface p-3 transition active:scale-[0.99] hover:border-ice/60 hover:bg-surface2"
+                  >
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-ice/40 bg-ice/10 font-display text-base text-ice">
+                      {s.num}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-base tracking-wide text-ink">
+                        {s.title}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted">
+                        {s.sub}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted transition group-hover:text-ice">
+                      →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
+      )}
+
+      {showAiQuick && (
+        <section aria-label="AI quick chat">
+          <Card className="border-flame/30 bg-gradient-to-br from-flame/[0.06] via-surface to-surface">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-flame">
+                  2K Expert · AI
+                </div>
+                {aiLastAssistant ? (
+                  <>
+                    <div className="mt-1 text-[11px] uppercase tracking-wider text-muted">
+                      Last reply
+                    </div>
+                    <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-ink">
+                      {aiLastAssistant}
+                    </p>
+                    <Link
+                      href="/ai"
+                      className="mt-2 inline-block text-[11px] font-bold uppercase tracking-wider text-flame hover:text-ink"
+                    >
+                      Continue chat →
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    href="/ai"
+                    className="mt-1 inline-block text-sm text-flame hover:text-ink"
+                  >
+                    Ask the expert anything →
+                  </Link>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={dismissAiQuick}
+                aria-label="Dismiss AI quick chat"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line bg-surface2 text-xs text-muted hover:border-flame hover:text-flame"
+              >
+                ×
+              </button>
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {hydrated && (
+        <section aria-label="Your card">
+          <PlayerCard />
+        </section>
+      )}
 
       <section aria-label="Snapshot" className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
         <Stat label="Archetypes" value="28" hint="Position × playstyle" />

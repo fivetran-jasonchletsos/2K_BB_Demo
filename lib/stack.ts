@@ -34,7 +34,7 @@ export type Source = {
 };
 
 export type EngineKind = "snowflake" | "athena" | "databricks" | "trino";
-export type EngineStatus = "enabled" | "optional";
+export type EngineStatus = "enabled" | "compatible" | "optional";
 
 export type Engine = {
   id: string;
@@ -242,9 +242,11 @@ export const SOURCES: Source[] = [
   },
 ];
 
-// Catalog-compatible read engines. Same Iceberg tables in MDLS — different
-// query engines. Snowflake and Athena are wired in dbt/profiles.example.yml;
-// Databricks and Trino are catalog-readable but not configured in this demo.
+// Read engines over the same MDLS Iceberg tables. Snowflake-on-Iceberg is
+// the primary engine wired into dbt for this demo (external volume + catalog
+// integration). Athena, Databricks, and Trino are catalog-compatible readers:
+// they can attach to the same Iceberg catalog and query the same tables
+// without re-ingest, but are not the active dbt target in this demo.
 export const ENGINES: Engine[] = [
   {
     id: "snowflake",
@@ -260,7 +262,7 @@ export const ENGINES: Engine[] = [
     kind: "athena",
     catalogReader: "AWS Glue Iceberg REST catalog",
     dbtAdapter: "dbt-athena",
-    status: "enabled",
+    status: "compatible",
   },
   {
     id: "databricks",
@@ -268,7 +270,7 @@ export const ENGINES: Engine[] = [
     kind: "databricks",
     catalogReader: "Unity Catalog Iceberg federation",
     dbtAdapter: "dbt-databricks",
-    status: "optional",
+    status: "compatible",
   },
   {
     id: "trino",
@@ -276,7 +278,7 @@ export const ENGINES: Engine[] = [
     kind: "trino",
     catalogReader: "Iceberg REST catalog connector",
     dbtAdapter: "dbt-trino",
-    status: "optional",
+    status: "compatible",
   },
 ];
 
@@ -534,13 +536,16 @@ export const PIPELINE_STATS = {
   latencyMinutesP50: 7,
   latencyMinutesP95: 22,
   engineCount: 4,
-  enabledEngineCount: 2,
+  enabledEngineCount: 1,
+  compatibleEngineCount: 3,
   // Labels reflect the lake-first architecture.
   labels: {
     sources: "SDK connectors",
     bronzeTables: "bronze Iceberg tables in MDLS",
     models: "dbt models on Iceberg",
     engines: "catalog-compatible read engines",
+    enabledEngines: "engine wired in dbt (Snowflake-on-Iceberg)",
+    compatibleEngines: "compatible readers via the same catalog",
   },
 };
 
@@ -598,8 +603,9 @@ export const LIFECYCLE_STAGES: {
   { n: 1, stage: "generation", system: "balldontlie · NBA.com · Reddit · ESPN · 2KRatings · codes" },
   { n: 2, stage: "ingestion", system: "Fivetran Connector SDK" },
   { n: 3, stage: "storage", system: "MDLS · Iceberg · Glue/Polaris catalog" },
-  { n: 4, stage: "transformation", system: "dbt on Iceberg — staging / intermediate / marts" },
-  { n: 5, stage: "serving", system: "Next.js App Router (ISR)" },
+  { n: 4, stage: "storage / engine", system: "Storage · MDLS Iceberg + Snowflake-on-Iceberg" },
+  { n: 5, stage: "transformation", system: "dbt on Snowflake-on-Iceberg — staging / intermediate / marts" },
+  { n: 6, stage: "serving", system: "Next.js App Router (ISR)" },
 ];
 
 export const UNDERCURRENTS = [
