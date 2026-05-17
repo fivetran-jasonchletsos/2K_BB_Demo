@@ -1,0 +1,96 @@
+version: 2
+
+sources:
+  - name: nba_balldontlie
+    description: "balldontlie.io REST API, landed by the balldontlie custom Fivetran connector."
+    database: NBA_2K_LAB
+    schema: nba_balldontlie
+    loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:   { count: 30, period: minute }
+      error_after:  { count: 120, period: minute }
+    tables:
+      - name: teams
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: players
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: games
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: stats
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: season_averages
+
+  - name: nba_stats
+    description: "stats.nba.com endpoints landed by the nba_stats custom Fivetran connector."
+    database: NBA_2K_LAB
+    schema: nba_stats
+    loaded_at_field: _fivetran_synced
+    tables:
+      - name: box_scores
+      - name: play_by_play
+      - name: lineups
+      - name: shot_chart_detail
+
+  - name: reddit_2k
+    description: "r/NBA2k + r/NBA2k26 posts and comments landed via OAuth."
+    database: NBA_2K_LAB
+    schema: reddit_2k
+    loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:  { count: 30, period: minute }
+      error_after: { count: 180, period: minute }
+    tables:
+      - name: posts
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: comments
+        columns:
+          - name: id
+            tests: [unique, not_null]
+
+  - name: espn_news
+    description: "ESPN public JSON endpoints for NBA news."
+    database: NBA_2K_LAB
+    schema: espn_news
+    loaded_at_field: _fivetran_synced
+    tables:
+      - name: articles
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: headlines
+
+  - name: twokratings
+    description: "Community-curated 2KRatings.com ratings (HTML scrape)."
+    database: NBA_2K_LAB
+    schema: twokratings
+    loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:  { count: 36, period: hour }
+      error_after: { count: 72, period: hour }
+    tables:
+      - name: player_ratings
+        columns:
+          - name: slug
+            tests: [unique, not_null]
+      - name: rating_history
+
+  - name: locker_codes
+    description: "Active 2K locker codes from community aggregator."
+    database: NBA_2K_LAB
+    schema: locker_codes
+    loaded_at_field: _fivetran_synced
+    tables:
+      - name: drops
+        columns:
+          - name: code
+            tests: [unique, not_null]

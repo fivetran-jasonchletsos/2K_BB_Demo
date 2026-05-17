@@ -1,0 +1,40 @@
+name: nba_2k_lab
+version: 1.0.0
+config-version: 2
+
+profile: nba_2k_lab
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Snowflake adapter; schemas are namespaced per layer via `+schema`.
+# Together with the warehouse default schema (set in profiles), models land in
+#   <db>.nba_raw_stg / nba_int / nba_marts
+models:
+  nba_2k_lab:
+    +materialized: view
+    staging:
+      +schema: raw_stg
+      +tags: ["staging"]
+    intermediate:
+      +materialized: table
+      +schema: int
+      +tags: ["intermediate"]
+    marts:
+      +materialized: table
+      +schema: marts
+      +tags: ["marts"]
+
+vars:
+  # Used by int_player_recent_form to define the rolling window.
+  recent_window_games: 5
+  recent_window_days: 30

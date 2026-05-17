@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: mart_player_360
+    description: "Canonical per-player row. Drives /players and feeds mart_rating_predictions."
+    columns:
+      - name: player_id
+        description: "Primary key. balldontlie player id."
+        tests:
+          - unique
+          - not_null
+      - name: full_name
+        tests:
+          - not_null
+      - name: form_z
+        description: "Recent PTS z-score vs season, clamped to [-3, 3]."
+      - name: news_score
+        description: "Aggregated news/sentiment score in [-1, 1]."
+      - name: injury_flag
+        description: "True if any keyword-matched injury mention in the last 7 days."
+
+  - name: mart_rating_predictions
+    description: "Predicted 2K rating delta with attribution."
+    columns:
+      - name: player_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('mart_player_360')
+              field: player_id
+      - name: predicted_delta
+        description: "Clamped to [-5, +5]."
+      - name: confidence
+        description: "0..1."
+      - name: primary_driver
+        tests:
+          - accepted_values:
+              values: ['injury', 'recent_form', 'news_sentiment']
+
+  - name: mart_locker_codes_active
+    description: "Currently-active 2K locker codes ranked by expiry."
+    columns:
+      - name: code
+        tests:
+          - unique
+          - not_null
+      - name: rank_by_expiry
+        tests:
+          - not_null

@@ -1,0 +1,32 @@
+# Copy to ~/.dbt/profiles.yml and fill in real values.
+# Combined with dbt_project.yml's `+schema:` overrides, models will land in:
+#   <database>.nba_raw_stg / nba_int / nba_marts
+
+nba_2k_lab:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "<your_account>.us-east-1"
+      user: "<your_user>"
+      password: "<your_password>"     # or use private_key_path
+      role: NBA_2K_LAB_DEV
+      database: NBA_2K_LAB
+      warehouse: NBA_2K_LAB_WH
+      schema: nba              # base schema; layer schemas prefix this (nba_raw_stg, nba_int, nba_marts)
+      threads: 8
+      client_session_keep_alive: false
+      query_tag: dbt-nba-2k-lab
+
+    prod:
+      type: snowflake
+      account: "<your_account>.us-east-1"
+      user: "<your_user>"
+      private_key_path: "/path/to/rsa_key.p8"
+      private_key_passphrase: "<passphrase>"
+      role: NBA_2K_LAB_PROD
+      database: NBA_2K_LAB
+      warehouse: NBA_2K_LAB_WH
+      schema: nba
+      threads: 16
+      query_tag: dbt-nba-2k-lab-prod
