@@ -262,6 +262,21 @@ export default function ConnectPage() {
         </p>
       </header>
 
+      <div className="flex items-start gap-3 rounded-md border border-lime/40 bg-lime/[0.07] p-3 text-sm">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-lime/60 bg-lime/15 font-bold text-lime">
+          ✓
+        </span>
+        <div>
+          <div className="font-display text-base tracking-wide text-ink">
+            Most of the site works without any keys
+          </div>
+          <p className="mt-0.5 text-xs text-muted">
+            These are optional for the AI features only. Builds, badges,
+            codes, scenarios, stats — all fully functional with zero setup.
+          </p>
+        </div>
+      </div>
+
       <Section
         title="Worker proxy URL (recommended)"
         subtitle="Route Claude calls through a Cloudflare Worker — avoids browser CORS, keeps API key server-side"

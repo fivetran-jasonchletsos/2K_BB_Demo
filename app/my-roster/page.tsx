@@ -54,6 +54,16 @@ const TAB_LABEL: Record<Tab, string> = {
   park: "Park Squad",
 };
 
+// Sample starting 5 shown when the user has no pinned cards yet so the
+// page looks alive on first paint. Tapping any slot still opens the picker.
+const SAMPLE_STARTING5: Record<Starting5Key, RosterSlot> = {
+  pg: { source: "nba", playerId: "maxey" },
+  sg: { source: "nba", playerId: "ant" },
+  sf: { source: "nba", playerId: "tatum" },
+  pf: { source: "nba", playerId: "embiid" },
+  c: { source: "nba", playerId: "jokic" },
+};
+
 // ---------------- helpers ----------------
 
 function tierStyle(tier?: MyTeamTier): { border: string; chip: string } {
@@ -1006,26 +1016,51 @@ export default function MyRosterPage() {
           )}
         </section>
       ) : tab === "myteam" ? (
-        <section>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            {STARTING5_KEYS.map((k) => (
-              <SlotCard
-                key={k}
-                slotKey={k}
-                slot={roster.starting5[k]}
-                onTap={() => openPicker("starting5", k)}
-                onClear={() => clearSlot("starting5", k)}
+        (() => {
+          const isSampleLineup =
+            Object.keys(roster.starting5).length === 0;
+          const displayStarting5: Partial<Record<Starting5Key, RosterSlot>> =
+            isSampleLineup ? SAMPLE_STARTING5 : roster.starting5;
+          return (
+            <section>
+              {isSampleLineup && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-ice/40 bg-ice/[0.07] px-3 py-2 text-sm">
+                  <span className="text-ink">
+                    Showing top NBA starters. Tap any slot to swap in your
+                    card.
+                  </span>
+                  <Pill tone="ice" className="!text-[10px]">
+                    Sample
+                  </Pill>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                {STARTING5_KEYS.map((k) => (
+                  <SlotCard
+                    key={k}
+                    slotKey={k}
+                    slot={displayStarting5[k]}
+                    onTap={() => openPicker("starting5", k)}
+                    onClear={() =>
+                      isSampleLineup ? openPicker("starting5", k) : clearSlot("starting5", k)
+                    }
+                  />
+                ))}
+              </div>
+              <SummaryPanel
+                slots={displayStarting5}
+                totalSlots={5}
+                onShare={doShare}
+                shareEnabled={!isSampleLineup}
+                shareLabel={
+                  isSampleLineup
+                    ? "Pin your own to share"
+                    : (shareMsg ?? "Share lineup")
+                }
               />
-            ))}
-          </div>
-          <SummaryPanel
-            slots={roster.starting5}
-            totalSlots={5}
-            onShare={doShare}
-            shareEnabled={Object.keys(roster.starting5).length > 0}
-            shareLabel={shareMsg ?? "Share lineup"}
-          />
-        </section>
+            </section>
+          );
+        })()
       ) : (
         <section>
           <div className="mb-2 text-[11px] text-muted">

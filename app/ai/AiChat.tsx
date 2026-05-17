@@ -25,6 +25,22 @@ import {
   type ChatMessage,
 } from "@/lib/ai";
 
+// Sample Q&A baked into the page so a first-time visitor with no API key
+// still sees what the chat DOES instead of an empty-state setup gate.
+const SAMPLE_CHAT: ChatMessage[] = [
+  {
+    role: "user",
+    content: "What's the best PG build for under 6'2 in 2K26 patch 1.7?",
+    ts: 0,
+  },
+  {
+    role: "assistant",
+    content:
+      "For a 6'1 PG in 1.7, run a Pass-First Playmaker with 86 3PT / 88 Speed / 88 Ball Handle / 85 Pass Acc / 80 Mid. Key badges (S/A): Quickdraw (S), Deadeye (S), Ankle Breaker (A), Unpluckable (S), Floor General (A).\n\nWhy it works in 1.7:\n- Quickdraw release window opened +6% on pull-ups — your bread and butter.\n- Ankle Breaker tied to 88+ BH triggers stick animations earlier than 7'+ defenders can recover.\n- Unpluckable was buffed +5 strip-resist; you'll survive contact-driven PGs.\n\nWeak spots: rim finishing through bigs. Cover that with smart screens + lob threat 4 or 5. Pair this build with a Slasher SG to keep defenders honest.",
+    ts: 0,
+  },
+];
+
 const SUGGESTED_PROMPTS = [
   "What's the best build for PG under 6'2?",
   "Best signature jumper for a 90 mid-range?",
@@ -202,10 +218,21 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
     saveCustomSystemPrompt("");
   };
 
-  const showWelcome = hydrated && messages.length === 0 && !pending;
+  // When there's no API key, no proxy, AND no real history, surface a
+  // baked-in sample conversation so the page never looks empty. The
+  // sample is purely visual — it's never sent to the model and is
+  // overwritten the moment the user sends a real message.
+  const proxySet =
+    typeof window !== "undefined" ? !!loadProxyUrl() : false;
+  const canChat = !!apiKey || proxySet;
+  const isSample = hydrated && !canChat && messages.length === 0 && !pending;
+  const displayMessages: ChatMessage[] = isSample ? SAMPLE_CHAT : messages;
+
+  const showWelcome =
+    hydrated && messages.length === 0 && !pending && !isSample;
   const firstAssistantIdx = useMemo(
-    () => messages.findIndex((m) => m.role === "assistant"),
-    [messages],
+    () => displayMessages.findIndex((m) => m.role === "assistant"),
+    [displayMessages],
   );
 
   return (
@@ -221,8 +248,23 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
           </div>
         )}
 
+        {isSample && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-ice/40 bg-ice/[0.07] px-3 py-2 text-xs">
+            <span className="text-ink">
+              Sample chat. Configure your API key on /connect to enable real
+              responses.
+            </span>
+            <Link
+              href="/connect"
+              className="rounded-md border border-ice/60 bg-ice/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-ice hover:bg-ice/20"
+            >
+              /connect →
+            </Link>
+          </div>
+        )}
+
         <ul className="flex flex-col gap-3">
-          {messages.map((m, i) => {
+          {displayMessages.map((m, i) => {
             const isUser = m.role === "user";
             const showExpertLabel =
               !isUser && i === firstAssistantIdx;
@@ -304,9 +346,7 @@ export function AiChat({ apiKey, hydrated, onMissingKey }: Props) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder={
-              apiKey ? "Ask the 2K Expert…" : "Set an API key to start"
-            }
+            placeholder="Ask the 2K Expert…"
             className="min-h-14 max-h-32 flex-1 resize-y rounded-md border border-line bg-surface px-3 py-3 text-sm text-ink placeholder:text-muted focus:border-flame focus:outline-none"
             disabled={pending}
           />

@@ -11,6 +11,7 @@ import {
   ftPct,
   GAME_MODES,
   gamesToCSV,
+  getSampleGames,
   loadCoachGoal,
   loadGames,
   loadTarget,
@@ -185,15 +186,25 @@ export default function MyStatsPage() {
     refresh();
   };
 
+  // ---------- Sample games (rendered when no real games exist) -----------
+  // We don't persist sample games. They're displayed verbatim so the page
+  // looks alive on first visit. As soon as the user logs their first real
+  // game, `isSample` flips false and the sample data disappears.
+  const isSample = hydrated && games.length === 0;
+  const displayGames = useMemo<GameLog[]>(
+    () => (isSample ? getSampleGames() : games),
+    [isSample, games],
+  );
+
   // ---------- Snapshot / PRs ------------------------------------------------
 
-  const snap = useMemo(() => snapshot(games, 10), [games]);
-  const prs = useMemo(() => personalRecords(games), [games]);
+  const snap = useMemo(() => snapshot(displayGames, 10), [displayGames]);
+  const prs = useMemo(() => personalRecords(displayGames), [displayGames]);
 
   // ---------- Filtering / Sorting ------------------------------------------
 
   const filteredGames = useMemo(() => {
-    let out = [...games];
+    let out = [...displayGames];
     if (filter !== "all") out = out.filter((g) => g.outcome === filter);
     if (modeFilter !== "all") out = out.filter((g) => g.mode === modeFilter);
     switch (sortKey) {
@@ -211,7 +222,7 @@ export default function MyStatsPage() {
         break;
     }
     return out;
-  }, [games, filter, modeFilter, sortKey]);
+  }, [displayGames, filter, modeFilter, sortKey]);
 
   // ---------- Export / Import ----------------------------------------------
 
@@ -310,6 +321,27 @@ export default function MyStatsPage() {
           Log your MyCareer games. See where you&apos;re improving.
         </p>
       </header>
+
+      {/* Sample-mode banner (only when no real games yet) */}
+      {isSample && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-ice/40 bg-ice/[0.07] px-3 py-2 text-sm">
+          <span className="text-ink">
+            Showing 5 sample games. Log your first to replace them.
+          </span>
+          <a
+            href="#log-form"
+            onClick={(e) => {
+              e.preventDefault();
+              if (typeof window !== "undefined") {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}
+            className="rounded-md border border-flame bg-flame px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-black"
+          >
+            Log first game
+          </a>
+        </div>
+      )}
 
       {/* Quick add panel (sticky on mobile) */}
       <div className="sticky top-[57px] z-30 -mx-4 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:rounded-xl md:border md:px-4 md:py-4">
@@ -520,9 +552,9 @@ export default function MyStatsPage() {
             );
           })}
         </div>
-        {hydrated && games.length >= 2 ? (
+        {hydrated && displayGames.length >= 2 ? (
           <Card>
-            <Trends games={games} range={chartRange} />
+            <Trends games={displayGames} range={chartRange} />
           </Card>
         ) : (
           <Card>
@@ -626,9 +658,7 @@ export default function MyStatsPage() {
             <div className="font-mono text-sm text-muted">{dash}</div>
           ) : filteredGames.length === 0 ? (
             <div className="font-mono text-sm text-muted">
-              {games.length === 0
-                ? "No games yet. Log your first game above."
-                : "No games match these filters."}
+              No games match these filters.
             </div>
           ) : (
             <ul className="divide-y divide-line">
@@ -722,35 +752,43 @@ export default function MyStatsPage() {
                           </div>
                         )}
                         <div className="mt-3 flex items-center gap-2">
+                          {isSample && (
+                            <span className="rounded-md border border-line bg-surface2 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted">
+                              Sample game · log your own to replace
+                            </span>
+                          )}
+                          {!isSample && (
                           <button
                             onClick={() => onEdit(g)}
                             className="rounded-md border border-line bg-surface px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-ink hover:border-ice hover:text-ice"
                           >
                             Edit
                           </button>
-                          {confirmDeleteId === g.id ? (
-                            <>
-                              <button
-                                onClick={() => onDelete(g.id)}
-                                className="rounded-md border border-flame bg-flame/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-flame"
-                              >
-                                Confirm delete
-                              </button>
-                              <button
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="text-[11px] uppercase tracking-wider text-muted hover:text-ink"
-                              >
-                                cancel
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmDeleteId(g.id)}
-                              className="rounded-md border border-line bg-surface px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-muted hover:border-flame hover:text-flame"
-                            >
-                              Delete
-                            </button>
                           )}
+                          {!isSample &&
+                            (confirmDeleteId === g.id ? (
+                              <>
+                                <button
+                                  onClick={() => onDelete(g.id)}
+                                  className="rounded-md border border-flame bg-flame/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-flame"
+                                >
+                                  Confirm delete
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="text-[11px] uppercase tracking-wider text-muted hover:text-ink"
+                                >
+                                  cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(g.id)}
+                                className="rounded-md border border-line bg-surface px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-muted hover:border-flame hover:text-flame"
+                              >
+                                Delete
+                              </button>
+                            ))}
                         </div>
                       </div>
                     )}

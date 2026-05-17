@@ -351,6 +351,188 @@ export async function generateWeeklyPlan(
   return validated;
 }
 
+// ---------- Sample plan (used when no API key/proxy is configured) -------
+
+/**
+ * Static example plan rendered when the user has no key and no proxy
+ * configured. Lets the page show what the agent OUTPUT looks like before
+ * the user wires up any credentials.
+ */
+export const SAMPLE_PLAN: WeeklyPlanResponse = {
+  rationale:
+    "Sample 7-day plan. Mix shot reps, scenarios, and a daily code redeem to build a consistent floor. Configure an API key on /connect to generate one tailored to your stats.",
+  days: [
+    {
+      day: 1,
+      dayLabel: "Mon",
+      actions: [
+        {
+          label: "Run a 30s green sprint in Shot Lab",
+          page: "/shot-trainer",
+          estMinutes: 3,
+          reason: "Quick rhythm rep to set your release window.",
+        },
+        {
+          label: "Play 3 pick-and-roll scenarios",
+          page: "/scenarios",
+          estMinutes: 5,
+          reason: "PnR reads are the #1 ROI on offense.",
+        },
+        {
+          label: "Redeem the soonest locker code",
+          page: "/codes",
+          estMinutes: 1,
+          reason: "Free VC. Compounds across the week.",
+        },
+      ],
+    },
+    {
+      day: 2,
+      dayLabel: "Tue",
+      actions: [
+        {
+          label: "20 corner 3s with your jumper",
+          page: "/shot-trainer",
+          estMinutes: 4,
+          reason: "Corner 3 is the highest-value shot in the game.",
+        },
+        {
+          label: "Save a new combo in Moves",
+          page: "/moves",
+          estMinutes: 4,
+          reason: "Lock in muscle memory for one signature drive.",
+        },
+        {
+          label: "Mark 2 mechanics learned in Secrets",
+          page: "/tips",
+          estMinutes: 3,
+          reason: "Hidden mechanics compound over a week.",
+        },
+      ],
+    },
+    {
+      day: 3,
+      dayLabel: "Wed",
+      actions: [
+        {
+          label: "Run 3 late-defense scenarios",
+          page: "/scenarios",
+          estMinutes: 5,
+          reason: "Closing possessions decide W/L.",
+        },
+        {
+          label: "Tune one MyPlayer build",
+          page: "/builds",
+          estMinutes: 6,
+          reason: "Small attribute reshuffles unlock new badges.",
+        },
+        {
+          label: "Add 3 risers to your watchlist",
+          page: "/pulse",
+          estMinutes: 2,
+          reason: "Catch trending cards before they spike.",
+        },
+      ],
+    },
+    {
+      day: 4,
+      dayLabel: "Thu",
+      actions: [
+        {
+          label: "Sprint 30s greens · second jumper",
+          page: "/shot-trainer",
+          estMinutes: 3,
+          reason: "Compare jumpers under live timing.",
+        },
+        {
+          label: "Play 3 ISO mismatch scenarios",
+          page: "/scenarios",
+          estMinutes: 5,
+          reason: "Hunt the mismatch — score 1.2 PPP+.",
+        },
+        {
+          label: "Redeem today's locker code",
+          page: "/codes",
+          estMinutes: 1,
+          reason: "Daily compound. Don't skip.",
+        },
+      ],
+    },
+    {
+      day: 5,
+      dayLabel: "Fri",
+      actions: [
+        {
+          label: "Log tonight's MyCareer game",
+          page: "/my-stats",
+          estMinutes: 3,
+          reason: "Trend lines need fresh data.",
+        },
+        {
+          label: "Play 3 OT scenarios",
+          page: "/scenarios",
+          estMinutes: 5,
+          reason: "OT execution is where Diamond-rep separates.",
+        },
+        {
+          label: "Mark 1 mechanic learned",
+          page: "/tips",
+          estMinutes: 2,
+          reason: "One new edge per session.",
+        },
+      ],
+    },
+    {
+      day: 6,
+      dayLabel: "Sat",
+      actions: [
+        {
+          label: "20 catch-and-shoot reps",
+          page: "/shot-trainer",
+          estMinutes: 4,
+          reason: "Off-ball gravity matters in 2K26.",
+        },
+        {
+          label: "Play 3 last-shot scenarios",
+          page: "/scenarios",
+          estMinutes: 5,
+          reason: "Crunch time decision-making rep.",
+        },
+        {
+          label: "Save a new combo in Moves",
+          page: "/moves",
+          estMinutes: 4,
+          reason: "Build a second signature counter.",
+        },
+      ],
+    },
+    {
+      day: 7,
+      dayLabel: "Sun",
+      actions: [
+        {
+          label: "Log this week's last game",
+          page: "/my-stats",
+          estMinutes: 3,
+          reason: "Close the loop on the week.",
+        },
+        {
+          label: "Review your top S-tier badges",
+          page: "/badges",
+          estMinutes: 4,
+          reason: "Reset priorities for next week.",
+        },
+        {
+          label: "Take the diagnostic if you haven't",
+          page: "/diagnose",
+          estMinutes: 4,
+          reason: "Tailors the next 14 days to your real gaps.",
+        },
+      ],
+    },
+  ],
+};
+
 // ---------- Cache helpers -------------------------------------------------
 
 function safeWindow(): boolean {

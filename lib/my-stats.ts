@@ -453,6 +453,64 @@ export function loadCoachGoal(): string {
   }
 }
 
+// ---------- Sample games (rendered when no real games exist) -------------
+
+/**
+ * Five plausible MyCareer games for first-paint demo. Not saved to
+ * localStorage — they're shown only when `loadGames()` returns an empty
+ * array. Dates are relative to the current day so the trends look fresh.
+ */
+export function getSampleGames(now: Date = new Date()): GameLog[] {
+  const daysAgo = (d: number): string => {
+    const t = new Date(now);
+    t.setDate(t.getDate() - d);
+    const y = t.getFullYear();
+    const m = String(t.getMonth() + 1).padStart(2, "0");
+    const day = String(t.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  const base = now.getTime();
+  // Sample line: a plausible 14yo MyCareer scoring guard.
+  const seed: Omit<GameLog, "id" | "ts" | "date">[] = [
+    {
+      mode: "MyCareer", opponent: "LAL", outcome: "W",
+      pts: 32, reb: 5, ast: 7, stl: 2, blk: 0, to: 3,
+      fgm: 12, fga: 22, threePm: 4, threePa: 9, ftm: 4, fta: 5,
+      plusMinus: 14, min: 34, notes: "Sample game.",
+    },
+    {
+      mode: "MyCareer", opponent: "BOS", outcome: "L",
+      pts: 24, reb: 3, ast: 5, stl: 1, blk: 0, to: 4,
+      fgm: 9, fga: 21, threePm: 3, threePa: 8, ftm: 3, fta: 4,
+      plusMinus: -6, min: 32, notes: "Sample game.",
+    },
+    {
+      mode: "MyCareer", opponent: "MIA", outcome: "W",
+      pts: 28, reb: 4, ast: 8, stl: 3, blk: 1, to: 2,
+      fgm: 10, fga: 19, threePm: 4, threePa: 8, ftm: 4, fta: 4,
+      plusMinus: 11, min: 33, notes: "Sample game.",
+    },
+    {
+      mode: "MyCareer", opponent: "DEN", outcome: "L",
+      pts: 26, reb: 6, ast: 4, stl: 1, blk: 0, to: 3,
+      fgm: 9, fga: 20, threePm: 3, threePa: 9, ftm: 5, fta: 6,
+      plusMinus: -3, min: 31, notes: "Sample game.",
+    },
+    {
+      mode: "MyCareer", opponent: "GSW", outcome: "W",
+      pts: 31, reb: 4, ast: 6, stl: 2, blk: 0, to: 2,
+      fgm: 11, fga: 21, threePm: 5, threePa: 10, ftm: 4, fta: 4,
+      plusMinus: 9, min: 33, notes: "Sample game.",
+    },
+  ];
+  return seed.map((s, i) => ({
+    id: `sample-${i}`,
+    ts: base - (4 - i) * 86_400_000,
+    date: daysAgo(4 - i),
+    ...s,
+  }));
+}
+
 export const TARGET_STAT_LABELS: Record<TargetStat, string> = {
   pts: "PTS",
   reb: "REB",

@@ -31,6 +31,11 @@ import {
 
 const DAY_MS = 24 * 3600 * 1000;
 
+// Visible-but-editable defaults so the page renders fully on first paint
+// instead of pushing setup CTAs.
+const DEFAULT_NAME = "Player";
+const DEFAULT_GOAL = "Diamond rep in MyCareer";
+
 function hrefToCategory(href: string): CoachAction["category"] {
   if (href.startsWith("/shot-trainer")) return "shot";
   if (href.startsWith("/scenarios")) return "scenario";
@@ -111,6 +116,7 @@ export default function CoachPage() {
   const [report, setReport] = useState<CoachReport | null>(null);
   const [name, setNameState] = useState("");
   const [nameInput, setNameInput] = useState("");
+  const [editingName, setEditingName] = useState(false);
   const [goal, setGoalState] = useState("");
   const [goalInput, setGoalInput] = useState("");
   const [editingGoal, setEditingGoal] = useState(false);
@@ -144,6 +150,11 @@ export default function CoachPage() {
   const growing = report?.growing ?? [];
   const stuck = report?.stuck ?? [];
   const recentWins = report?.recentWins ?? [];
+  // We only show Growing / Stuck if the user has any localStorage activity
+  // to derive signal from. Otherwise the section would feel like an
+  // empty-state pushback ("take the diagnostic first…").
+  const hasActivity = (report?.snapshot.activity ?? 0) > 0;
+  const showSignal = hydrated && hasActivity;
 
   // Tonight's three — merge prescription actions (if a diagnostic exists)
   // ahead of the generic stuck-based actions, then top-up from the generic
@@ -179,10 +190,15 @@ export default function CoachPage() {
   // Handlers -----------------------------------------------------------------
   const submitName = () => {
     const trimmed = nameInput.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setEditingName(false);
+      setNameInput("");
+      return;
+    }
     setName(trimmed);
     setNameState(trimmed);
     setNameInput("");
+    setEditingName(false);
   };
 
   const submitGoal = (g: string) => {
@@ -254,33 +270,41 @@ export default function CoachPage() {
               {tier[0]}
             </div>
             <div>
-              {hydrated && name ? (
-                <div className="font-display text-3xl tracking-wider text-ink md:text-4xl">
-                  {name}
-                </div>
-              ) : hydrated ? (
+              {hydrated && editingName ? (
                 <div className="flex items-center gap-2">
                   <input
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
-                    onBlur={() => nameInput.trim() && submitName()}
+                    onBlur={submitName}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") submitName();
+                      if (e.key === "Escape") {
+                        setEditingName(false);
+                        setNameInput("");
+                      }
                     }}
                     placeholder="Your handle"
                     maxLength={24}
+                    autoFocus
                     className="rounded-md border border-line bg-surface2 px-2 py-1 font-display text-2xl tracking-wider text-ink placeholder:text-muted focus:border-flame focus:outline-none"
                   />
-                  <button
-                    onClick={submitName}
-                    className="rounded-md border border-flame bg-flame px-3 py-1 text-xs font-bold uppercase tracking-wider text-black"
-                  >
-                    Set
-                  </button>
                 </div>
               ) : (
-                <div className="font-display text-3xl tracking-wider text-muted">
-                  {dash}
+                <div className="flex items-center gap-2">
+                  <div className="font-display text-3xl tracking-wider text-ink md:text-4xl">
+                    {hydrated ? name || DEFAULT_NAME : DEFAULT_NAME}
+                  </div>
+                  {hydrated && (
+                    <button
+                      onClick={() => {
+                        setEditingName(true);
+                        setNameInput(name);
+                      }}
+                      className="text-[11px] uppercase tracking-wider text-muted hover:text-ice"
+                    >
+                      edit
+                    </button>
+                  )}
                 </div>
               )}
               <div className="mt-1 flex items-center gap-2">
@@ -295,20 +319,7 @@ export default function CoachPage() {
             <div className="text-[11px] font-bold uppercase tracking-wider text-muted">
               Goal
             </div>
-            {hydrated && goal && !editingGoal ? (
-              <div className="mt-1 flex items-center gap-2">
-                <span className="font-mono text-sm text-ink">{goal}</span>
-                <button
-                  onClick={() => {
-                    setEditingGoal(true);
-                    setGoalInput(goal);
-                  }}
-                  className="text-[11px] uppercase tracking-wider text-muted hover:text-ice"
-                >
-                  edit
-                </button>
-              </div>
-            ) : hydrated ? (
+            {hydrated && editingGoal ? (
               <div className="mt-1 space-y-2">
                 <div className="flex flex-wrap gap-1.5">
                   {PRESET_GOALS.map((g) => (
@@ -327,9 +338,11 @@ export default function CoachPage() {
                     onChange={(e) => setGoalInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") submitGoal(goalInput);
+                      if (e.key === "Escape") setEditingGoal(false);
                     }}
                     placeholder="Custom goal…"
                     maxLength={80}
+                    autoFocus
                     className="w-full rounded-md border border-line bg-surface2 px-2 py-1 text-sm text-ink placeholder:text-muted focus:border-flame focus:outline-none"
                   />
                   <button
@@ -338,10 +351,31 @@ export default function CoachPage() {
                   >
                     Save
                   </button>
+                  <button
+                    onClick={() => setEditingGoal(false)}
+                    className="text-[11px] uppercase tracking-wider text-muted hover:text-ink"
+                  >
+                    cancel
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="mt-1 font-mono text-sm text-muted">{dash}</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="font-mono text-sm text-ink">
+                  {hydrated ? goal || DEFAULT_GOAL : DEFAULT_GOAL}
+                </span>
+                {hydrated && (
+                  <button
+                    onClick={() => {
+                      setEditingGoal(true);
+                      setGoalInput(goal);
+                    }}
+                    className="text-[11px] uppercase tracking-wider text-muted hover:text-ice"
+                  >
+                    change
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -397,20 +431,20 @@ export default function CoachPage() {
       </Section>
 
       {/* Growing / Stuck -------------------------------------------------- */}
-      <Section
-        title="Signal"
-        subtitle="Where you're growing — and where you're stuck."
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="font-display text-2xl tracking-wider text-lime">
-                Growing
-              </div>
-              <Pill tone="lime">{hydrated ? growing.length : dash}</Pill>
-            </div>
-            {hydrated ? (
-              growing.length > 0 ? (
+      {showSignal && (growing.length > 0 || stuck.length > 0) && (
+        <Section
+          title="Signal"
+          subtitle="Where you're growing — and where you're stuck."
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            {growing.length > 0 && (
+              <Card>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="font-display text-2xl tracking-wider text-lime">
+                    Growing
+                  </div>
+                  <Pill tone="lime">{growing.length}</Pill>
+                </div>
                 <ul className="space-y-1.5 text-sm text-ink">
                   {growing.map((g, i) => (
                     <li key={i} className="flex items-start gap-2">
@@ -419,57 +453,41 @@ export default function CoachPage() {
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <div className="font-mono text-sm text-muted">
-                  No growth signal yet. Log a session.
-                </div>
-              )
-            ) : (
-              <div className="font-mono text-sm text-muted">{dash}</div>
+              </Card>
             )}
-          </Card>
 
-          <Card>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="font-display text-2xl tracking-wider text-flame">
-                Stuck
-              </div>
-              <Pill tone="flame">{hydrated ? stuck.length : dash}</Pill>
-            </div>
-            {hydrated ? (
-              stuck.length > 0 ? (
-                <>
-                  <ul className="space-y-1.5 text-sm text-ink">
-                    {(stuckExpanded ? stuck : stuck.slice(0, 3)).map((s, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="mt-0.5 text-flame">▲</span>
-                        <span className="font-mono">{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {stuck.length > 3 && (
-                    <button
-                      type="button"
-                      onClick={() => setStuckExpanded((v) => !v)}
-                      className="mt-2 text-[11px] uppercase tracking-wider text-muted hover:text-flame"
-                    >
-                      {stuckExpanded
-                        ? "show less"
-                        : `+${stuck.length - 3} more`}
-                    </button>
-                  )}
-                </>
-              ) : (
-                <div className="font-mono text-sm text-muted">
-                  Nothing flagged.
+            {stuck.length > 0 && (
+              <Card>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="font-display text-2xl tracking-wider text-flame">
+                    Stuck
+                  </div>
+                  <Pill tone="flame">{stuck.length}</Pill>
                 </div>
-              )
-            ) : (
-              <div className="font-mono text-sm text-muted">{dash}</div>
+                <ul className="space-y-1.5 text-sm text-ink">
+                  {(stuckExpanded ? stuck : stuck.slice(0, 3)).map((s, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-0.5 text-flame">▲</span>
+                      <span className="font-mono">{s}</span>
+                    </li>
+                  ))}
+                </ul>
+                {stuck.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => setStuckExpanded((v) => !v)}
+                    className="mt-2 text-[11px] uppercase tracking-wider text-muted hover:text-flame"
+                  >
+                    {stuckExpanded
+                      ? "show less"
+                      : `+${stuck.length - 3} more`}
+                  </button>
+                )}
+              </Card>
             )}
-          </Card>
-        </div>
-      </Section>
+          </div>
+        </Section>
+      )}
 
       {/* Tonight's Three -------------------------------------------------- */}
       <Section

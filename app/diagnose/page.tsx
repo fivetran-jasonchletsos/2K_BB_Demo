@@ -22,14 +22,104 @@ import {
 } from "@/lib/diagnose";
 import { SCENARIOS, type Scenario } from "@/lib/scenarios";
 
-type Step = "intro" | "questions" | "drillA" | "drillB" | "result";
+type Step = "intro" | "sample" | "questions" | "drillA" | "drillB" | "result";
+
+// Sample diagnostic shown to first-time visitors so they see what a
+// finished diagnostic looks like before being asked to fill in anything.
+const SAMPLE_STATE: DiagnosticState = {
+  ts: Date.now(),
+  responses: {
+    weakness: "Decision-making",
+    position: "PG",
+    mode: "MyCareer",
+    hours: "15-30 min/day",
+    target: "Diamond rep",
+  } as ResponseMap,
+  drillResults: {
+    drillA: { attempts: 5, greens: 3, avgOffsetMs: 18 },
+    drillB: { scenarioId: "pnr-1", pickedLabel: "Drive", optimal: false },
+  },
+  focus: "decision",
+  summary:
+    "Your timing is solid but late-clock decisions slip — you're driving into traffic when a swing pass opens a corner 3. Two-week plan rebuilds your read habits.",
+  prescription: {
+    focus: "decision",
+    week1: [
+      {
+        day: 1,
+        text: "Play 3 pick-and-roll scenarios on /scenarios",
+        href: "/scenarios?cat=pnr",
+        minutes: 5,
+      },
+      {
+        day: 2,
+        text: "Run a 30s green sprint in Shot Lab",
+        href: "/shot-trainer",
+        minutes: 3,
+      },
+      {
+        day: 3,
+        text: "Play 3 late-defense scenarios",
+        href: "/scenarios?cat=late-defense",
+        minutes: 5,
+      },
+      {
+        day: 4,
+        text: "Redeem today's locker code",
+        href: "/codes",
+        minutes: 1,
+      },
+      {
+        day: 5,
+        text: "Save 2 new combos in Moves",
+        href: "/moves",
+        minutes: 5,
+      },
+    ],
+    week2: [
+      {
+        day: 8,
+        text: "Play 3 OT scenarios",
+        href: "/scenarios?cat=ot",
+        minutes: 5,
+      },
+      {
+        day: 9,
+        text: "Log this week's MyCareer game",
+        href: "/my-stats",
+        minutes: 3,
+      },
+      {
+        day: 10,
+        text: "Mark 3 mechanics learned in Secrets",
+        href: "/tips",
+        minutes: 4,
+      },
+      {
+        day: 12,
+        text: "Add 3 risers to your watchlist",
+        href: "/pulse",
+        minutes: 2,
+      },
+      {
+        day: 14,
+        text: "Retake the diagnostic to lock in gains",
+        href: "/diagnose",
+        minutes: 4,
+      },
+    ],
+  },
+};
 
 const FILL_MS = 1200; // Drill A bar fill duration
 const GREEN_ZONE_START = 0.88; // top 12%
 const DRILL_A_TARGET_ATTEMPTS = 5;
 
 export default function DiagnosePage() {
-  const [step, setStep] = useState<Step>("intro");
+  // Start in "sample" — show what a finished diagnostic looks like before
+  // asking the user to fill in 5 questions. If a fresh diagnostic is in
+  // localStorage, the effect below will swap us into "result".
+  const [step, setStep] = useState<Step>("sample");
   const [responses, setResponses] = useState<ResponseMap>({});
   const [qIndex, setQIndex] = useState(0);
   const [drillA, setDrillA] = useState<DrillAResult>({
@@ -101,7 +191,7 @@ export default function DiagnosePage() {
     setDrillB(null);
     scenarioForDrill.current =
       SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
-    setStep("intro");
+    setStep("sample");
   }
 
   return (
@@ -117,6 +207,18 @@ export default function DiagnosePage() {
           5 questions + 2 quick drills. Output: your focus area and a 2-week plan.
         </p>
       </header>
+
+      {step === "sample" && (
+        <SampleResultStep
+          onStart={() => {
+            setResponses({});
+            setQIndex(0);
+            setDrillA({ attempts: 0, greens: 0, avgOffsetMs: 0 });
+            setDrillB(null);
+            setStep("questions");
+          }}
+        />
+      )}
 
       {step === "intro" && (
         <IntroStep
@@ -141,7 +243,7 @@ export default function DiagnosePage() {
           onBack={
             qIndex > 0
               ? () => setQIndex(qIndex - 1)
-              : () => setStep("intro")
+              : () => setStep("sample")
           }
           onPick={(v) => pickAnswer(QUESTIONS[qIndex].id, v)}
         />
@@ -169,6 +271,74 @@ export default function DiagnosePage() {
       {step === "result" && savedState && (
         <ResultStep state={savedState} onRetake={startOver} />
       )}
+    </div>
+  );
+}
+
+/* ---------------- Sample (first-visit) ---------------- */
+
+function SampleResultStep({ onStart }: { onStart: () => void }) {
+  const state = SAMPLE_STATE;
+  return (
+    <div className="space-y-4">
+      <Card className="border-ice/40 bg-gradient-to-br from-ice/[0.10] via-surface to-surface">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Pill tone="ice">Sample diagnosis</Pill>
+          <span className="text-[11px] uppercase tracking-wider text-muted">
+            Example output
+          </span>
+        </div>
+        <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">
+          Focus area
+        </div>
+        <div className="mt-1 font-display text-4xl leading-tight tracking-wide text-ink md:text-5xl">
+          {FOCUS_LABEL[state.focus]}
+        </div>
+        <p className="mt-3 text-sm text-ink">{state.summary}</p>
+        <p className="mt-2 text-[11px] text-muted">
+          This is what a finished diagnostic looks like. Take yours to get
+          plan tailored to YOUR gaps.
+        </p>
+      </Card>
+
+      <Card>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-flame">
+              Week 1 · sample
+            </div>
+            <span className="text-[11px] uppercase tracking-wider text-muted num">
+              {state.prescription.week1.length} actions
+            </span>
+          </div>
+          <ActionList actions={state.prescription.week1} />
+        </div>
+      </Card>
+
+      <Card>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-ice">
+              Week 2 · sample
+            </div>
+            <span className="text-[11px] uppercase tracking-wider text-muted num">
+              {state.prescription.week2.length} actions
+            </span>
+          </div>
+          <ActionList actions={state.prescription.week2} />
+        </div>
+      </Card>
+
+      <button
+        type="button"
+        onClick={onStart}
+        className="h-14 w-full rounded-md bg-flame text-base font-bold uppercase tracking-wider text-black transition active:translate-y-px"
+      >
+        Take yours →
+      </button>
+      <p className="text-center text-[11px] text-muted">
+        5 quick questions · 2 short drills · ~2 minutes
+      </p>
     </div>
   );
 }

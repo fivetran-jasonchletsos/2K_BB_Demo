@@ -20,24 +20,13 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "plan",
-    label: "PLAN",
+    id: "builds",
+    label: "BUILDS",
     routes: [
       { href: "/builds", label: "Builds", sub: "MyPlayer optimizer" },
       { href: "/badges", label: "Badges", sub: "Tier list + filters" },
-      { href: "/coach", label: "Coach", sub: "Today's plan" },
-      { href: "/path", label: "Path", sub: "Mastery tiers" },
-      { href: "/diagnose", label: "Diagnose", sub: "Find your gap" },
-    ],
-  },
-  {
-    id: "data",
-    label: "DATA",
-    routes: [
       { href: "/players", label: "Players", sub: "NBA database" },
       { href: "/pulse", label: "Pulse", sub: "Live NBA → 2K" },
-      { href: "/my-stats", label: "My Stats", sub: "Log your games" },
-      { href: "/my-roster", label: "My Roster", sub: "Pin your players" },
     ],
   },
   {
@@ -45,13 +34,18 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "AI",
     routes: [
       { href: "/ai", label: "AI", sub: "Ask the expert" },
-      { href: "/connect", label: "Connect", sub: "API keys" },
     ],
   },
   {
-    id: "about",
-    label: "ABOUT",
+    id: "more",
+    label: "MORE",
     routes: [
+      { href: "/coach", label: "Coach", sub: "Today's plan" },
+      { href: "/path", label: "Path", sub: "Mastery tiers" },
+      { href: "/diagnose", label: "Diagnose", sub: "Find your gap" },
+      { href: "/my-stats", label: "My Stats", sub: "Log your games" },
+      { href: "/my-roster", label: "My Roster", sub: "Pin your players" },
+      { href: "/connect", label: "Connect", sub: "API keys" },
       { href: "/stack", label: "Stack", sub: "Data pipeline" },
       { href: "/help", label: "Help", sub: "How to use this site" },
     ],
@@ -70,7 +64,7 @@ export function Nav() {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(NAV_GROUPS.map((g) => [g.id, true])),
+    Object.fromEntries(NAV_GROUPS.map((g) => [g.id, g.id !== "more"])),
   );
   const [openDesktop, setOpenDesktop] = useState<string | null>(null);
 
@@ -82,8 +76,10 @@ export function Nav() {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
-      // Reset accordion to all-expanded each time menu opens
-      setExpanded(Object.fromEntries(NAV_GROUPS.map((g) => [g.id, true])));
+      // Reset accordion to default: PLAY/BUILDS/AI expanded, MORE collapsed
+      setExpanded(
+        Object.fromEntries(NAV_GROUPS.map((g) => [g.id, g.id !== "more"])),
+      );
     } else {
       document.body.style.overflow = "";
     }
@@ -105,7 +101,7 @@ export function Nav() {
           <span className="font-display text-xl tracking-wider text-ink">LAB</span>
         </Link>
 
-        {/* Desktop nav: 5 group dropdowns */}
+        {/* Desktop nav: 4 group dropdowns (PLAY · BUILDS · AI · MORE) */}
         <nav
           className="hidden md:flex md:items-center md:gap-1"
           onMouseLeave={() => setOpenDesktop(null)}

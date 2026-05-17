@@ -6,23 +6,18 @@ export type HelpEntry = {
   related: { href: string; label: string }[];
 };
 
-export type NavGroupKey = "PLAY" | "PLAN" | "DATA" | "AI" | "ABOUT";
+export type NavGroupKey = "PLAY" | "BUILDS" | "AI" | "MORE";
 
 export const NAV_GROUPS: { key: NavGroupKey; label: string; routes: string[] }[] = [
   {
     key: "PLAY",
     label: "Play",
-    routes: ["/scenarios", "/shot-trainer", "/moves", "/codes"],
+    routes: ["/codes", "/moves", "/shot-trainer", "/scenarios", "/tips"],
   },
   {
-    key: "PLAN",
-    label: "Plan",
-    routes: ["/coach", "/path", "/diagnose", "/builds", "/badges", "/tips"],
-  },
-  {
-    key: "DATA",
-    label: "Data",
-    routes: ["/my-stats", "/my-roster", "/players", "/pulse"],
+    key: "BUILDS",
+    label: "Builds",
+    routes: ["/builds", "/badges", "/players", "/pulse"],
   },
   {
     key: "AI",
@@ -30,9 +25,18 @@ export const NAV_GROUPS: { key: NavGroupKey; label: string; routes: string[] }[]
     routes: ["/ai"],
   },
   {
-    key: "ABOUT",
-    label: "About",
-    routes: ["/", "/stack", "/connect", "/help"],
+    key: "MORE",
+    label: "More",
+    routes: [
+      "/coach",
+      "/path",
+      "/diagnose",
+      "/my-stats",
+      "/my-roster",
+      "/connect",
+      "/stack",
+      "/help",
+    ],
   },
 ];
 

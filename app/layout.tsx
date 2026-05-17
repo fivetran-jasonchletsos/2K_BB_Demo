@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { HelpButton } from "@/components/HelpButton";
+import { Tour } from "@/components/Tour";
 
 export const metadata = {
   title: "2K LAB — NBA 2K Builds, Badges, Codes & Live Stats",
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </main>
         <HelpButton />
+        <Tour />
         <footer className="mx-auto max-w-7xl border-t border-line px-4 py-6 text-[11px] text-muted md:px-6">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>

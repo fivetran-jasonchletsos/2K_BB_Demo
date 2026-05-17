@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Card, Pill } from "@/components/ui";
 import {
@@ -135,9 +136,11 @@ function Skeleton() {
 function CriterionRow({
   criterion,
   snapshot,
+  showScenarioHelp,
 }: {
   criterion: Criterion;
   snapshot: MasterySnapshot;
+  showScenarioHelp?: boolean;
 }) {
   const cur = criterion.currentValueFn(snapshot);
   const met = isCriterionMet(criterion, snapshot);
@@ -159,7 +162,20 @@ function CriterionRow({
             <span className="text-[10px] leading-none">·</span>
           )}
         </span>
-        <span className="text-sm text-ink">{criterion.label}</span>
+        <span className="text-sm text-ink">
+          {criterion.label}
+          {showScenarioHelp && (
+            <>
+              {" "}
+              <Link
+                href="/scenarios"
+                className="text-[11px] font-bold uppercase tracking-wider text-ice hover:text-ink"
+              >
+                What&apos;s a scenario? →
+              </Link>
+            </>
+          )}
+        </span>
       </div>
       <span
         className={`shrink-0 font-mono text-[11px] tabular-nums ${
@@ -247,9 +263,24 @@ function TierCardItem({
       {expanded && (
         <div className="border-t border-line pl-5 pr-4 py-3">
           <ul className="divide-y divide-line/60">
-            {sortedCriteria(tier, snapshot).map((cr) => (
-              <CriterionRow key={cr.key} criterion={cr} snapshot={snapshot} />
-            ))}
+            {(() => {
+              const rows = sortedCriteria(tier, snapshot);
+              // Attach the "What's a scenario?" inline help to the first
+              // unmet scenario-related criterion in this tier.
+              const firstUnmetScenarioIdx = rows.findIndex(
+                (cr) =>
+                  !isCriterionMet(cr, snapshot) &&
+                  /scenario/i.test(cr.label),
+              );
+              return rows.map((cr, i) => (
+                <CriterionRow
+                  key={cr.key}
+                  criterion={cr}
+                  snapshot={snapshot}
+                  showScenarioHelp={i === firstUnmetScenarioIdx}
+                />
+              ));
+            })()}
           </ul>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
             <span>
@@ -296,13 +327,20 @@ export default function PathPage() {
     saveCurrentTier(result.current);
   }, [hydrated, result.current]);
 
-  // Auto-expand current tier on first hydration.
+  // Auto-expand current tier + first locked tier on first hydration so
+  // the page shows concrete progression without requiring the user to
+  // tap anything.
   useEffect(() => {
     if (!hydrated) return;
+    const currentIdx = tierIndex(result.current);
+    const firstLocked = TIERS[currentIdx + 1]?.id;
     setExpanded((prev) => {
-      if (prev.has(result.current)) return prev;
+      if (prev.has(result.current) && (!firstLocked || prev.has(firstLocked))) {
+        return prev;
+      }
       const next = new Set(prev);
       next.add(result.current);
+      if (firstLocked) next.add(firstLocked);
       return next;
     });
   }, [hydrated, result.current]);

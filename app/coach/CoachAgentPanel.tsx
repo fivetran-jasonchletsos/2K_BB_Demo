@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Pill } from "@/components/ui";
-import { loadApiKey } from "@/lib/ai";
+import { loadApiKey, loadProxyUrl } from "@/lib/ai";
 import {
   analyze,
   getGoal,
@@ -21,6 +21,7 @@ import {
   AgentError,
   COACH_AGENT_MODEL,
   COACH_AGENT_SYSTEM_PROMPT,
+  SAMPLE_PLAN,
   type AgentEvent,
   type CachedWeeklyPlan,
   type WeeklyPlanAction,
@@ -102,12 +103,16 @@ function buildRequest(): WeeklyPlanRequest {
 export function CoachAgentPanel() {
   const [hydrated, setHydrated] = useState(false);
   const [hasKey, setHasKey] = useState(false);
+  const [hasProxy, setHasProxy] = useState(false);
   const [cached, setCached] = useState<CachedWeeklyPlan | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [rawResponse, setRawResponse] = useState<string>("");
   const [showPrompt, setShowPrompt] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  // Show the sample plan inline when the user clicks Generate without
+  // any credentials configured. Toggled off when real generation succeeds.
+  const [showSample, setShowSample] = useState(false);
   // Recomputed each generate so the displayed prompt matches what was sent.
   const [lastUserPayload, setLastUserPayload] = useState<string>("");
 
@@ -124,9 +129,12 @@ export function CoachAgentPanel() {
 
   useEffect(() => {
     setHasKey(!!loadApiKey());
+    setHasProxy(!!loadProxyUrl());
     setCached(loadCachedPlan());
     setHydrated(true);
   }, []);
+
+  const canGenerate = hasKey || hasProxy;
 
   const stale = isStale(cached);
   const generating = step !== "idle";
@@ -134,11 +142,16 @@ export function CoachAgentPanel() {
   const onGenerate = useCallback(async () => {
     if (generating) return;
     const apiKey = loadApiKey();
-    if (!apiKey) {
-      setHasKey(false);
+    const proxyUrl = loadProxyUrl();
+    setHasKey(!!apiKey);
+    setHasProxy(!!proxyUrl);
+    if (!apiKey && !proxyUrl) {
+      // Nothing wired up — surface the inline sample plan so the user
+      // sees the shape of the output without a setup gate.
+      setShowSample(true);
       return;
     }
-    setHasKey(true);
+    setShowSample(false);
     setError(null);
     setRawResponse("");
     setStep("reading");
@@ -188,7 +201,7 @@ export function CoachAgentPanel() {
 
   const statusLabel = (() => {
     if (!hydrated) return "—";
-    if (!cached) return "No plan yet";
+    if (!cached) return "Sample plan";
     if (stale) return "Stale — regenerate";
     return `Plan generated ${relativeTime(cached.generatedAt)}`;
   })();
@@ -223,18 +236,10 @@ export function CoachAgentPanel() {
             Output: structured JSON (7 days × 3 actions)
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {hydrated && !hasKey && (
-              <Link
-                href="/ai"
-                className="rounded-md border border-flame/50 bg-flame/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-flame hover:bg-flame/20"
-              >
-                Set API key →
-              </Link>
-            )}
             <button
               type="button"
               onClick={onGenerate}
-              disabled={!hydrated || !hasKey || generating}
+              disabled={!hydrated || generating}
               className="h-12 rounded-md bg-flame px-5 font-display text-base tracking-wider text-black transition disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
             >
               {generating
@@ -313,11 +318,40 @@ export function CoachAgentPanel() {
           </div>
         )}
 
-        {/* Empty state ------------------------------------------------ */}
+        {/* No-credential / sample state ------------------------------- */}
         {hydrated && !cached && !generating && !error && (
-          <div className="mt-4 rounded-md border border-dashed border-line bg-bg/40 p-4 text-sm text-muted">
-            No plan generated yet. Press the button — the agent will read your
-            stats, call Claude, and return 7 days × 3 actions.
+          <div className="mt-5">
+            {!canGenerate && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-ice/40 bg-ice/[0.07] p-3 text-xs">
+                <span className="text-ink">
+                  {showSample
+                    ? "Sample plan below. Real one needs credentials."
+                    : "Press Generate to see a sample plan."}
+                </span>
+                <Link
+                  href="/connect"
+                  className="rounded-md border border-ice/60 bg-ice/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-ice hover:bg-ice/20"
+                >
+                  Add Worker proxy or API key on /connect →
+                </Link>
+              </div>
+            )}
+            <div className="mb-3 rounded-md border border-line bg-bg/60 p-3">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
+                  Why this plan
+                </span>
+                <Pill tone="muted" className="!text-[10px]">
+                  Sample
+                </Pill>
+              </div>
+              <p className="text-sm text-ink">{SAMPLE_PLAN.rationale}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {SAMPLE_PLAN.days.map((d) => (
+                <DayCard key={`sample-${d.day}`} day={d} />
+              ))}
+            </div>
           </div>
         )}
 

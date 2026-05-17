@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { HELP, NAV_GROUPS, type HelpEntry } from "@/lib/help";
 import { Card, Section } from "@/components/ui";
+import { TOUR_STORAGE_KEY } from "@/components/Tour";
+
+function replaySiteTour() {
+  try {
+    window.localStorage.removeItem(TOUR_STORAGE_KEY);
+  } catch {
+    // ignore (private mode, etc.)
+  }
+  window.location.assign("/");
+}
 
 const ROUTE_META: Record<string, { label: string; sub: string }> = {
   "/": { label: "Home", sub: "Your dashboard" },
@@ -193,9 +203,21 @@ export default function HelpPage() {
           Every page in 20 seconds. Tap a card to open its help sheet, or jump
           straight to a page.
         </p>
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={replaySiteTour}
+            className="inline-flex min-h-[36px] items-center rounded-md border border-line bg-surface2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-ice active:scale-95"
+          >
+            ▶ Replay site tour
+          </button>
+        </div>
       </header>
 
       <Section title="Where to start" subtitle="Three first steps">
+        <p className="mb-3 text-sm text-muted">
+          PLAY and BUILDS work without any setup. MORE pages let you personalize.
+        </p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {QUICK_START.map((q) => (
             <Link
