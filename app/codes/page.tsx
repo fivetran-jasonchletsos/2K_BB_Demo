@@ -228,9 +228,11 @@ export default function CodesPage() {
           <details className="group relative mt-2">
             <summary
               aria-label="About these codes"
-              className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-surface text-[11px] font-bold text-muted transition hover:border-flame/60 hover:text-flame [&::-webkit-details-marker]:hidden"
+              className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-line bg-surface text-sm font-bold text-muted transition hover:border-flame/60 hover:text-flame group-open:border-flame/60 group-open:text-flame [&::-webkit-details-marker]:hidden"
             >
-              ?
+              <span className="inline-block transition-transform group-open:rotate-180" aria-hidden>
+                ?
+              </span>
             </summary>
             <div className="absolute left-0 z-10 mt-2 w-72 max-w-[80vw] rounded-lg border border-line bg-surface2 p-3 text-[11px] leading-relaxed text-muted shadow-lg">
               Codes are community-aggregated from public sources. Verify in-game
@@ -389,7 +391,7 @@ export default function CodesPage() {
       {/* Archive — closed by default */}
       <section aria-label="Archive">
         <details className="group">
-          <summary className="flex w-full cursor-pointer list-none items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-left transition hover:border-flame/40 [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-[56px] w-full cursor-pointer list-none items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-left transition hover:border-flame/40 [&::-webkit-details-marker]:hidden">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
                 Archive
@@ -398,9 +400,8 @@ export default function CodesPage() {
                 {ARCHIVED_CODES.length} expired codes
               </div>
             </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-flame">
-              <span className="group-open:hidden">Show →</span>
-              <span className="hidden group-open:inline">Hide →</span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface2 text-base font-bold text-flame transition-transform group-open:rotate-180">
+              <span aria-hidden>⌄</span>
             </span>
           </summary>
 

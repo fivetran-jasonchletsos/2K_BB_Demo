@@ -362,17 +362,12 @@ function PracticeTimer({
             </div>
           ) : current ? (
             <>
-              {/* Step indicator — prominent */}
-              <div className="flex items-baseline gap-3">
-                <div className="font-display text-3xl leading-none tracking-wide text-flame md:text-4xl">
-                  Step {stepIdx + 1}
-                </div>
-                <div className="font-display text-xl leading-none tracking-wide text-muted md:text-2xl">
-                  of {moves.length}
-                </div>
+              {/* Step indicator — prominent, top of modal */}
+              <div className="font-display text-3xl leading-none tracking-wide text-flame md:text-5xl">
+                Step {stepIdx + 1} of {moves.length}
               </div>
-              <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.3em] text-muted">
-                {current.name} · {(stepDuration / 1000).toFixed(1)}s
+              <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.3em] text-muted">
+                / {moves.length} total · {(stepDuration / 1000).toFixed(1)}s
               </div>
               <div className="mt-2 font-display text-3xl tracking-wide text-ink md:text-4xl">
                 {current.name}
@@ -528,6 +523,43 @@ export default function MovesPage() {
 
   // Refs to move cards (for scroll-to)
   const moveRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Top 10 carousel scroll state
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const [topScroll, setTopScroll] = useState<{ atStart: boolean; atEnd: boolean }>({
+    atStart: true,
+    atEnd: false,
+  });
+
+  const updateTopScroll = useCallback(() => {
+    const el = topScrollRef.current;
+    if (!el) return;
+    const atStart = el.scrollLeft <= 4;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    setTopScroll((prev) =>
+      prev.atStart === atStart && prev.atEnd === atEnd ? prev : { atStart, atEnd }
+    );
+  }, []);
+
+  useEffect(() => {
+    updateTopScroll();
+    const el = topScrollRef.current;
+    if (!el) return;
+    const onScroll = () => updateTopScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [updateTopScroll]);
+
+  const scrollTopBy = (dir: -1 | 1) => {
+    const el = topScrollRef.current;
+    if (!el) return;
+    const w = el.clientWidth * 0.8;
+    el.scrollBy({ left: dir * w, behavior: "smooth" });
+  };
 
   // ---- Load persisted state -------------------------------------------------
   useEffect(() => {
@@ -774,35 +806,76 @@ export default function MovesPage() {
               swipe →
             </span>
           </div>
-          <div className="-mx-4 overflow-x-auto px-4 pb-1">
-            <div className="flex w-max gap-2">
-              {topMoves.map((m, i) => (
-                <button
-                  key={m.id}
-                  onClick={() => jumpToMove(m)}
-                  className="flex w-44 shrink-0 flex-col gap-1.5 rounded-lg border border-line bg-surface p-3 text-left transition hover:border-flame hover:shadow-glow"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] text-muted">
-                      #{String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="font-mono text-[10px] text-gold">
-                      pop {m.popularity}
-                    </span>
-                  </div>
-                  <div className="font-display text-lg leading-tight tracking-wide text-ink">
-                    {m.name}
-                  </div>
-                  <div className="text-[11px] text-ink">{m.owner}</div>
-                  <div className="line-clamp-1 text-[11px] text-muted">
-                    {m.situation}
-                  </div>
-                  <div className="mt-auto pt-1">
-                    <DiffDots level={m.difficulty} />
-                  </div>
-                </button>
-              ))}
+          <div className="relative -mx-4">
+            <div
+              ref={topScrollRef}
+              className="overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <div className="flex w-max gap-2">
+                {topMoves.map((m, i) => (
+                  <button
+                    key={m.id}
+                    onClick={() => jumpToMove(m)}
+                    className="flex w-44 shrink-0 flex-col gap-1.5 rounded-lg border border-line bg-surface p-3 text-left transition hover:border-flame hover:shadow-glow"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] text-muted">
+                        #{String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-mono text-[10px] text-gold">
+                        pop {m.popularity}
+                      </span>
+                    </div>
+                    <div className="font-display text-lg leading-tight tracking-wide text-ink">
+                      {m.name}
+                    </div>
+                    <div className="text-[11px] text-ink">{m.owner}</div>
+                    <div className="line-clamp-1 text-[11px] text-muted">
+                      {m.situation}
+                    </div>
+                    <div className="mt-auto pt-1">
+                      <DiffDots level={m.difficulty} />
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Left fade + chevron */}
+            {!topScroll.atStart && (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-bg/80 to-transparent"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  onClick={() => scrollTopBy(-1)}
+                  aria-label="Scroll left"
+                  className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-surface/90 font-display text-xl text-ink shadow-card backdrop-blur hover:border-flame hover:text-flame"
+                >
+                  ‹
+                </button>
+              </>
+            )}
+
+            {/* Right fade + chevron */}
+            {!topScroll.atEnd && (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-bg/80 to-transparent"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  onClick={() => scrollTopBy(1)}
+                  aria-label="Scroll right"
+                  className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-surface/90 font-display text-xl text-ink shadow-card backdrop-blur hover:border-flame hover:text-flame"
+                >
+                  ›
+                </button>
+              </>
+            )}
           </div>
         </div>
 

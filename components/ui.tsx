@@ -4,13 +4,16 @@ export function Card({
   children,
   className = "",
   as: Tag = "div",
+  id,
 }: {
   children: ReactNode;
   className?: string;
   as?: any;
+  id?: string;
 }) {
   return (
     <Tag
+      id={id}
       className={`rounded-xl border border-line bg-surface p-4 shadow-card ${className}`}
     >
       {children}

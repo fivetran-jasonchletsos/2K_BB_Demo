@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Bar, Card, Pill, Section, Stat } from "@/components/ui";
 import {
   POSITIONS,
@@ -16,6 +17,7 @@ import {
   getRisers,
   getThisWeek,
 } from "@/lib/pulse";
+import { getPlayerIdByName } from "@/lib/players";
 
 type TabId = "watchlist" | "risers" | "fallers" | "confidence" | "week";
 type SortId = "delta" | "confidence" | "form";
@@ -182,7 +184,7 @@ function Sparkline({
   points,
   delta,
   width = 96,
-  height = 28,
+  height = 32,
 }: {
   points: number[];
   delta: number;
@@ -214,8 +216,8 @@ function Sparkline({
       className={`overflow-visible ${tone}`}
       aria-hidden
     >
-      <path d={path} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={last[0]} cy={last[1]} r={2} fill={stroke} />
+      <path d={path} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r={2.5} fill={stroke} />
     </svg>
   );
 }
@@ -277,8 +279,22 @@ function PlayerRow({
     [p],
   );
 
+  const profileId = getPlayerIdByName(p.displayName);
+
   return (
-    <div className="rounded-xl border border-line bg-surface transition hover:border-line/80">
+    <div
+      id={`player-${p.playerId}`}
+      className="rounded-xl border border-line bg-surface transition hover:border-line/80 scroll-mt-20"
+    >
+      {/* Secondary anchor matching the /players page's player id so deep links
+          from /players?id=<id> → /pulse#player-<id> land on this row. */}
+      {profileId && (
+        <span
+          id={`player-${profileId}`}
+          aria-hidden
+          className="block scroll-mt-20"
+        />
+      )}
       <div className="flex w-full items-center gap-2 p-3 md:gap-3 md:p-4">
         <StarToggle
           followed={followed}
@@ -416,6 +432,17 @@ function PlayerRow({
                 <div className="font-mono text-xs text-ink">{p.nextUpdateEta}</div>
               </div>
 
+              {profileId && (
+                <div className="flex justify-end">
+                  <Link
+                    href={`/players?id=${profileId}`}
+                    className="font-mono text-[10px] uppercase tracking-wider text-ice hover:text-ink"
+                  >
+                    Full profile →
+                  </Link>
+                </div>
+              )}
+
               <div>
                 <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted">
                   Source attribution
@@ -460,8 +487,20 @@ function WatchlistRow({
     return out;
   }, [p]);
 
+  const profileId = getPlayerIdByName(p.displayName);
+
   return (
-    <div className="rounded-xl border border-line bg-surface p-3 md:p-4">
+    <div
+      id={`player-${p.playerId}`}
+      className="rounded-xl border border-line bg-surface p-3 md:p-4 scroll-mt-20"
+    >
+      {profileId && (
+        <span
+          id={`player-${profileId}`}
+          aria-hidden
+          className="block scroll-mt-20"
+        />
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <Avatar name={p.displayName} team={p.team} />
         <div className="min-w-0 flex-1">
@@ -502,6 +541,14 @@ function WatchlistRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+        {profileId && (
+          <Link
+            href={`/players?id=${profileId}`}
+            className="font-mono text-[10px] uppercase tracking-wider text-ice hover:text-ink"
+          >
+            Full profile →
+          </Link>
+        )}
         <button
           type="button"
           onClick={onUnfollow}

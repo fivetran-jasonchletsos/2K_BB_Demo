@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   PLAYERS,
   TEAMS,
   ARCHETYPE_LABELS,
+  PLAYER_TO_BUILD_ARCHE,
+  buildArcheFor,
   searchPlayers,
   computeMatchup,
   getPlayer,
@@ -13,6 +16,7 @@ import {
   type Position,
   type MatchupResult,
 } from "@/lib/players";
+import { ARCHETYPES as BUILD_ARCHETYPES } from "@/lib/builds";
 import { Card, Pill, Stat, TierBadge, Bar } from "@/components/ui";
 
 type Mode = "browse" | "matchup";
@@ -312,10 +316,18 @@ function PlayerDetail({ player }: { player: Player }) {
             {archeLabel(player.archetypeId)}
           </div>
           <Link
-            href={`/builds?arche=${player.archetypeId}`}
+            href={`/builds?arche=${buildArcheFor(player.archetypeId)}`}
             className="rounded-lg border border-flame/40 bg-flame/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-flame hover:bg-flame/20"
           >
             Open in Build Lab →
+          </Link>
+        </div>
+        <div className="mt-2 flex justify-end">
+          <Link
+            href={`/pulse#player-${player.id}`}
+            className="text-[11px] font-semibold uppercase tracking-wider text-ice hover:text-ink"
+          >
+            View live prediction →
           </Link>
         </div>
       </div>
@@ -712,6 +724,14 @@ function MatchupSlot({
         </div>
         <div className="text-[11px] text-muted">
           {t?.abbr} · {player.position} · {player.rating2k} OVR
+        </div>
+        <div className="mt-1 text-[10px] text-muted">
+          <Link
+            href={`/builds?arche=${buildArcheFor(player.archetypeId)}`}
+            className="text-ice hover:text-ink"
+          >
+            {ARCHETYPE_LABELS[player.archetypeId] ?? player.archetypeId} build →
+          </Link>
         </div>
       </div>
       <div className="flex shrink-0 flex-col gap-1">
@@ -1142,6 +1162,14 @@ function MatchupView({
 // ---------- Page ----------
 
 export default function PlayersPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlayersPageInner />
+    </Suspense>
+  );
+}
+
+function PlayersPageInner() {
   const [mode, setMode] = useState<Mode>("browse");
   const [search, setSearch] = useState("");
   const [pos, setPos] = useState<PosFilter>("All");
@@ -1149,6 +1177,7 @@ export default function PlayersPage() {
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const [minRating, setMinRating] = useState(70);
   const [sort, setSort] = useState<SortKey>("rating");
+  const [archeFilter, setArcheFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1162,6 +1191,33 @@ export default function PlayersPage() {
   useEffect(() => {
     setSavedMatchups(loadSavedMatchups());
   }, []);
+
+  // Deep-link handling: ?id=<playerId> auto-expands+scrolls;
+  // ?arche=<archetypeId> filters Browse to players in that archetype.
+  const searchParams = useSearchParams();
+  const queryId = searchParams?.get("id") ?? null;
+  const queryArche = searchParams?.get("arche") ?? null;
+  const didApplyQueryRef = useRef(false);
+  useEffect(() => {
+    if (didApplyQueryRef.current) return;
+    if (queryArche) {
+      setArcheFilter(queryArche);
+      setMode("browse");
+    }
+    if (queryId) {
+      const target = getPlayer(queryId);
+      if (target) {
+        setMode("browse");
+        setExpanded(queryId);
+        // Defer scroll to after the row renders.
+        requestAnimationFrame(() => {
+          const el = document.getElementById(`player-row-${queryId}`);
+          el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+    }
+    if (queryId || queryArche) didApplyQueryRef.current = true;
+  }, [queryId, queryArche]);
 
   const matchupResult: MatchupResult | null = useMemo(() => {
     if (!matchupA || !matchupB) return null;
@@ -1186,6 +1242,13 @@ export default function PlayersPage() {
     list = list.filter((p) => POS_GROUPS[pos](p.position));
     if (teamFilter.size > 0) list = list.filter((p) => teamFilter.has(p.team));
     list = list.filter((p) => p.rating2k >= minRating);
+    if (archeFilter) {
+      list = list.filter(
+        (p) =>
+          p.archetypeId === archeFilter ||
+          PLAYER_TO_BUILD_ARCHE[p.archetypeId] === archeFilter,
+      );
+    }
 
     if (sort === "rating") list = [...list].sort((a, b) => b.rating2k - a.rating2k);
     else if (sort === "name")
@@ -1194,7 +1257,7 @@ export default function PlayersPage() {
       list = [...list].sort((a, b) => b.ratingDelta - a.ratingDelta);
 
     return list;
-  }, [search, pos, teamFilter, minRating, sort]);
+  }, [search, pos, teamFilter, minRating, sort, archeFilter]);
 
   const stats = useMemo(() => {
     const total = PLAYERS.length;
@@ -1203,6 +1266,15 @@ export default function PlayersPage() {
     const topMover = [...PLAYERS].sort((a, b) => b.ratingDelta - a.ratingDelta)[0];
     return { total, avg, topMover };
   }, []);
+
+  const archeFilterLabel = useMemo(() => {
+    if (!archeFilter) return "";
+    return (
+      ARCHETYPE_LABELS[archeFilter] ??
+      BUILD_ARCHETYPES.find((a) => a.id === archeFilter)?.name ??
+      archeFilter
+    );
+  }, [archeFilter]);
 
   const compared = useMemo(
     () =>
@@ -1476,6 +1548,20 @@ export default function PlayersPage() {
 
           <div className="text-[11px] text-muted">
             {filtered.length} of {PLAYERS.length} players
+            {archeFilter && (
+              <span className="ml-2">
+                ·{" "}
+                <span className="text-ice">
+                  archetype {archeFilterLabel}
+                </span>{" "}
+                <button
+                  onClick={() => setArcheFilter(null)}
+                  className="text-flame hover:underline"
+                >
+                  clear
+                </button>
+              </span>
+            )}
             {compareIds.length > 0 && (
               <span className="ml-2">
                 ·{" "}
@@ -1498,16 +1584,17 @@ export default function PlayersPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
             {filtered.map((p) => (
-              <PlayerCard
-                key={p.id}
-                player={p}
-                expanded={expanded === p.id}
-                onToggle={() =>
-                  setExpanded((cur) => (cur === p.id ? null : p.id))
-                }
-                onCompare={() => toggleCompare(p.id)}
-                inCompare={compareIds.includes(p.id)}
-              />
+              <div key={p.id} id={`player-row-${p.id}`}>
+                <PlayerCard
+                  player={p}
+                  expanded={expanded === p.id}
+                  onToggle={() =>
+                    setExpanded((cur) => (cur === p.id ? null : p.id))
+                  }
+                  onCompare={() => toggleCompare(p.id)}
+                  inCompare={compareIds.includes(p.id)}
+                />
+              </div>
             ))}
           </div>
         )}

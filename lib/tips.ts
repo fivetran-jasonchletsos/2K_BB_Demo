@@ -756,6 +756,263 @@ export const TIPS: Tip[] = [
     tags: ["jumpshot", "base", "bigs"],
     hook: "6'10\"+: KD base at 70 3PT. Giannis base gets blocked by guards.",
   },
+
+  // ─── MECHANICS (5 new) ───
+  {
+    id: "mech-shot-contest-types",
+    title: "Contest type matters more than contest rating",
+    body:
+      "Hand-up contests (Triangle close-out) cut shot % by 14. Vertical contests (hold Triangle late) only cut by 8 but stop you from fouling.\nIf you're a 75+ Perimeter D defender, hand-up contests every time. Under 75, vertical is safer — the foul rate gap is 9% to 2%.",
+    category: "mechanics",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "+6% contest impact",
+    tags: ["contest", "defense", "input"],
+    patchVerified: "1.7",
+    hook: "Hand-up beats vertical by 6% on shot impact. Below 75 PD, vertical is safer.",
+  },
+  {
+    id: "mech-pass-fake-window",
+    title: "Pass fake has an 8-frame buffer before commit",
+    body:
+      "Triangle + Square (pump pass) starts an 8-frame (~0.13s) window where you can still shoot or drive without losing the dribble.\nUse it to bait closeouts on hard-help defenders. After frame 8, you're locked into the pass animation.",
+    category: "mechanics",
+    difficulty: 3,
+    timeToExecute: "ongoing",
+    value: "Free closeout bait",
+    tags: ["pass-fake", "buffer", "advanced"],
+    hook: "Pass fake has 8 frames of buffer. Pump → shoot or drive without losing dribble.",
+  },
+  {
+    id: "mech-rebound-stick-direction",
+    title: "Right stick direction during rebound = where ball lands",
+    body:
+      "Holding RS toward the ball flight while jumping (Y button) increases your rebound chance by ~22% on contested boards.\n2K's rebound engine reads stick direction in the 4 frames before contact. Default neutral = AI decides.",
+    category: "mechanics",
+    difficulty: 3,
+    timeToExecute: "ongoing",
+    value: "+22% contested boards",
+    tags: ["rebound", "stick", "advanced"],
+    hook: "Point RS toward the ball during rebound jump. +22% contested boards.",
+  },
+  {
+    id: "mech-shot-stick-aim",
+    title: "Right stick shot aiming green window is 24% wider",
+    body:
+      "Settings → Controller → Shot Aiming: On. RS-aimed jumpers get a 0.13s green window (vs 0.10s for button) but require left-right precision.\nWorth it if you have steady thumbs. Adds ~3% green rate at the cost of harder timing.",
+    category: "mechanics",
+    difficulty: 3,
+    timeToExecute: "one-time",
+    value: "+3% greens",
+    tags: ["shooting", "stick", "settings"],
+    patchVerified: "1.7",
+    hook: "Stick aim adds 24% wider green window. +3% greens if your thumb is steady.",
+  },
+  {
+    id: "mech-dribble-cancel-pickup",
+    title: "Dribble cancel prevents soft turnover on traps",
+    body:
+      "Hold L2 + LS-back to stop your dribble cleanly without picking up. Cancels the trap animation defenders trigger when they double.\nUse it any time two defenders close within 3 feet of you. Loses 0.2s of momentum but saves the possession.",
+    category: "mechanics",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "TO rate -40% on traps",
+    tags: ["dribble", "trap", "advanced"],
+    hook: "L2 + LS-back cancels dribble cleanly. Cuts trap-turnover rate by 40%.",
+  },
+
+  // ─── DEFENSE (4 new) ───
+  {
+    id: "def-closeout-cone",
+    title: "Closeouts: don't sprint past 8 feet from the shooter",
+    body:
+      "Sprint closeouts (R2) inside 8 feet trigger the airborne animation 78% of the time — you fly past the shooter, easy drive lane.\nRelease R2 at the free-throw line distance. The walking closeout retains lateral D and still contests the jumper.",
+    category: "defense",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "Blow-by rate -28%",
+    tags: ["closeout", "perimeter", "defense"],
+    hook: "Stop sprinting closeouts at 8 ft. Sprint past = airborne 78% of the time.",
+  },
+  {
+    id: "def-rim-vertical-timing",
+    title: "Vertical contest at the rim: hold Triangle 0.3s before catch",
+    body:
+      "Verticality (hold Triangle as the cutter gathers) triggers the no-foul contest. Release window: 0.3s before shot release.\nIf you mistime late, you get a regular block attempt with a 14% foul rate. Early = stuck in jump animation.",
+    category: "defense",
+    difficulty: 3,
+    timeToExecute: "ongoing",
+    value: "Foul rate at rim -10%",
+    tags: ["block", "verticality", "rim"],
+    patchVerified: "1.7",
+    hook: "Hold Triangle 0.3s before the gather. Foul rate at rim drops from 14% to 4%.",
+  },
+  {
+    id: "def-help-side-position",
+    title: "One pass away, one foot in the paint, one foot out",
+    body:
+      "Help defense AI keys off your foot position. One foot in the lane triggers the rotation tag on a roller. Both feet out = no help.\nLearn the lane line — your help rotation timing improves by 0.4s when you start 'in the gap' instead of fully out.",
+    category: "defense",
+    difficulty: 3,
+    timeToExecute: "ongoing",
+    value: "Help arrives 0.4s faster",
+    tags: ["help", "positioning", "advanced"],
+    hook: "One foot in the lane, one foot out. Help tag arrives 0.4s faster.",
+  },
+  {
+    id: "def-screen-navigation",
+    title: "Square through screens, don't try to fight over",
+    body:
+      "Tapping Square as a screen approaches triggers the slide-through animation — you stay attached to your man 68% of the time.\nFighting over (no input) gets you screened 84% of the time vs an 80+ Brick Wall.",
+    category: "defense",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "Screen nav +24%",
+    tags: ["screen", "navigation", "defense"],
+    hook: "Tap Square as the screen comes. Slide-through keeps you attached 68% of the time.",
+  },
+
+  // ─── OFFENSE (4 new) ───
+  {
+    id: "off-mismatch-call",
+    title: "Call iso (Y/Triangle on RB) when ANY size mismatch is on the floor",
+    body:
+      "L1 + R1 → Iso clears the strong side. The play autoreads the largest height/strength gap on your team vs theirs.\nWorks even if you don't have a 'star' — 4-inch height gap is enough to trigger the post-up window animation in 2K26 1.7.",
+    category: "offense",
+    difficulty: 1,
+    timeToExecute: "ongoing",
+    value: "Post EV +0.15",
+    tags: ["iso", "mismatch", "play-call"],
+    patchVerified: "1.7",
+    hook: "Call iso anytime 4+ inches of height gap exists. 2K auto-finds the mismatch.",
+  },
+  {
+    id: "off-ball-cut-rule",
+    title: "Off-ball cut decision rule",
+    body:
+      "When you've been off-ball for 4+ seconds and your defender's head is turned toward the ball-handler, cut backdoor on the next dribble move.\n~63% completion rate at 2K26 difficulty. Use the L1 + flick toward rim cut input.",
+    category: "offense",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "Free buckets",
+    tags: ["cut", "off-ball", "decision"],
+    hook: "4-sec off-ball + defender turned = backdoor cut. 63%.",
+  },
+  {
+    id: "off-spacing-corners",
+    title: "Stash your worst shooter in the dunker spot, not the corner",
+    body:
+      "Corner spacing only works if the player has 75+ 3PT. Sub-75 in the corner = sagging help defender, drive lane closed.\nTag your sub-75 shooters as 'Cut to Basket' in Coach Settings. They stand in the dunker spot, ready for a dump-off.",
+    category: "offense",
+    difficulty: 2,
+    timeToExecute: "one-time",
+    value: "Drive lane open",
+    tags: ["spacing", "tags", "coach"],
+    hook: "Sub-75 3PT in the corner = no spacing. Move them to the dunker spot.",
+  },
+  {
+    id: "off-clock-tempo",
+    title: "Score in 18+ seconds of clock = 12% better defensive possession after",
+    body:
+      "Long offensive possessions tire AI defenders — the next defensive possession allows 4.2 fewer points per 100 vs a quick-score possession.\nWhen up by 4+ in the 4th, don't push pace. Run clock to 18+ and your defense is statistically sharper next trip.",
+    category: "offense",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "Pts allowed -4.2/100",
+    tags: ["tempo", "clock", "defense"],
+    hook: "Run 18+ on the clock when up 4+. Defense allows 4.2 fewer pts next trip.",
+  },
+
+  // ─── MYTEAM (3 new) ───
+  {
+    id: "mt-lineup-3-guard",
+    title: "3-guard lineup vs AI = 28% more open 3s generated",
+    body:
+      "AI opponents collapse to the paint when 3+ guards are on the floor. Mid-range shots tagged as 'open' rise by 14% and corner 3s by 28%.\nDoesn't work online — human opponents adjust. AI-only meta for TT100 and Domination grinding.",
+    category: "myteam",
+    difficulty: 2,
+    timeToExecute: "one-time",
+    value: "+28% open corner 3s",
+    tags: ["lineup", "ai", "myteam"],
+    hook: "3-guard lineup = AI collapses the paint. +28% open corner 3s vs CPU.",
+  },
+  {
+    id: "mt-card-lock-evo",
+    title: "Lock cards from auction listing before evo'ing",
+    body:
+      "Auction-locked cards still evo. Forgetting to lock means an accidental listing kicks in if you toggle the wrong menu.\nLock all evo cards and your starting 5 immediately after acquiring. Saves the 8% relisting fee on accidental sales.",
+    category: "myteam",
+    difficulty: 1,
+    timeToExecute: "<5 min",
+    value: "Prevents fat-finger loss",
+    tags: ["evo", "auction", "lock"],
+    hook: "Lock evo cards from auction before grinding. Stops fat-finger relistings cold.",
+  },
+  {
+    id: "mt-budget-pack-flip",
+    title: "Open Promo packs Tuesday morning, flip Sunday night",
+    body:
+      "Promo packs drop Tuesday 12pm ET. Pull values are highest first 6 hours (best players are still available in market scarcity).\nList the chase cards Sunday 8-11pm ET for the bidder peak — average 1.4x markup over Tuesday list price.",
+    category: "myteam",
+    difficulty: 2,
+    timeToExecute: "weekly",
+    value: "+40% pack ROI",
+    tags: ["packs", "flip", "auction"],
+    hook: "Pull Tuesday 12pm ET. List chase cards Sunday 8-11pm ET. 1.4x markup.",
+  },
+
+  // ─── ANIMATIONS (2 new) ───
+  {
+    id: "anim-dunk-style-meter",
+    title: "Dunk style governs meter shape, not just animation",
+    body:
+      "Athletic dunk style has a 0.20s meter sweet spot at 70-80% fill. Power dunk style sweet spot is 60-70% fill, 0.16s wide.\nIf your timing is inconsistent, switch to Power — the lower release point trades animation flair for a more forgiving window.",
+    category: "animations",
+    difficulty: 3,
+    timeToExecute: "one-time",
+    value: "+8% green dunks",
+    tags: ["dunks", "meter", "style"],
+    patchVerified: "1.7",
+    hook: "Power dunk style has a 60-70% sweet spot. More forgiving than Athletic.",
+  },
+  {
+    id: "anim-dribble-style-speed",
+    title: "Dribble style packs change ball speed, not animation length",
+    body:
+      "Pro 3 dribble style: 14% faster between-the-leg moves. Trae style: 18% faster but the size-up animation is 0.4s longer.\nNet speed wins for Pro 3 in transition. Trae style only wins half-court iso where the longer size-up shakes defenders.",
+    category: "animations",
+    difficulty: 2,
+    timeToExecute: "one-time",
+    value: "Faster combo chain",
+    tags: ["dribble", "style", "speed"],
+    hook: "Pro 3 dribble style is fastest in transition. Trae only wins half-court iso.",
+  },
+
+  // ─── PARK (2 new) ───
+  {
+    id: "park-3v3-spacing-rule",
+    title: "3v3 spacing: never have two teammates within 8 feet",
+    body:
+      "Park courts are tighter than 5v5. Two teammates within 8 feet of each other lets the defense collapse to two on the ball.\nStand at the wing, corner, or top — never bunch. If your teammate moves to your spot, rotate to the open one instantly.",
+    category: "park",
+    difficulty: 2,
+    timeToExecute: "ongoing",
+    value: "Open shots +30%",
+    tags: ["3v3", "spacing", "park"],
+    hook: "3v3: never within 8 ft of a teammate. Rotate to open spot the moment they move.",
+  },
+  {
+    id: "park-randoms-screen-rule",
+    title: "Set screens for randoms — earn their pass back",
+    body:
+      "Random teammates pass back to screeners 2.4x more often than to off-ball cutters. The screen logs as 'teammate assist' in the AI rep model.\nSet a screen for every random ball-handler on the first 3 possessions. They'll feed you the rest of the game.",
+    category: "park",
+    difficulty: 1,
+    timeToExecute: "ongoing",
+    value: "+2.4x touches w/ randoms",
+    tags: ["randoms", "screens", "social"],
+    hook: "Screen for randoms first 3 possessions. They'll feed you 2.4x more after.",
+  },
 ];
 
 /**

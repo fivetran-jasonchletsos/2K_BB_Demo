@@ -1088,6 +1088,141 @@ export const PLAYERS: Player[] = [
     recentGames: groomGames("SAS", 311),
     predicted: { nextDelta: 0, reason: "Two-way wing. Steady.", confidence: "med" },
   },
+  {
+    id: "lamelo",
+    firstName: "LaMelo", lastName: "Ball", displayName: "LaMelo Ball",
+    team: "CHA", position: "PG", height: "6'7\"", weightLb: 180, age: 24,
+    rating2k: 86, ratingDelta: 1, archetypeId: "OFFENSIVE_THREAT",
+    attributes: a(86, 76, 78, 70, 90, 90, 64, 52, 64, 84, 68, 76),
+    badges: [
+      b("Limitless Range", "Shooting", "S"), b("Dimer", "Playmaking", "A"),
+      b("Ankle Breaker", "Playmaking", "A"), b("Needle Threader", "Playmaking", "A"),
+      b("Bail Out", "Playmaking", "B"), b("Quick First Step", "Playmaking", "B"),
+    ],
+    last10: l10(25.4, 5.2, 7.6, 0.428, 0.358, -4.2),
+    recentGames: groomGames("CHA", 313),
+    predicted: { nextDelta: 1, reason: "Volume scorer, weak D drags ceiling.", confidence: "med" },
+  },
+  {
+    id: "cam-thomas",
+    firstName: "Cam", lastName: "Thomas", displayName: "Cam Thomas",
+    team: "BKN", position: "SG", height: "6'3\"", weightLb: 199, age: 24,
+    rating2k: 82, ratingDelta: 0, archetypeId: "OFFENSIVE_THREAT",
+    attributes: a(82, 84, 78, 68, 82, 68, 64, 54, 56, 78, 72, 70),
+    badges: [
+      b("Limitless Range", "Shooting", "A"), b("Middy Magician", "Shooting", "A"),
+      b("Step Back Pure", "Shooting", "A"), b("Deadeye", "Shooting", "B"),
+      b("Killer Combos", "Playmaking", "B"), b("Heat Check", "Shooting", "B"),
+    ],
+    last10: l10(23.8, 3.4, 3.6, 0.434, 0.348, -5.4),
+    recentGames: groomGames("BKN", 317),
+    predicted: { nextDelta: 0, reason: "Bucket-getter on a rebuild. Holds 82.", confidence: "med" },
+  },
+  {
+    id: "scoot",
+    firstName: "Scoot", lastName: "Henderson", displayName: "Scoot Henderson",
+    team: "POR", position: "PG", height: "6'2\"", weightLb: 196, age: 22,
+    rating2k: 80, ratingDelta: 1, archetypeId: "TWO_WAY_SHOT_CREATOR",
+    attributes: a(72, 74, 82, 80, 82, 80, 72, 56, 60, 86, 74, 86),
+    badges: [
+      b("Quick First Step", "Playmaking", "A"), b("Dimer", "Playmaking", "B"),
+      b("Posterizer", "Finishing", "B"), b("Killer Combos", "Playmaking", "B"),
+      b("Handles for Days", "Playmaking", "B"), b("Pogo Stick", "Physical", "B"),
+    ],
+    last10: l10(16.8, 3.6, 6.4, 0.444, 0.328, -3.6),
+    recentGames: groomGames("POR", 319),
+    predicted: { nextDelta: 1, reason: "Sophomore leap on usage. Climbs.", confidence: "low" },
+  },
+  {
+    id: "keegan",
+    firstName: "Keegan", lastName: "Murray", displayName: "Keegan Murray",
+    team: "SAC", position: "PF", height: "6'8\"", weightLb: 225, age: 25,
+    rating2k: 82, ratingDelta: 0, archetypeId: "TWO_WAY_STRETCH",
+    attributes: a(82, 74, 76, 74, 64, 60, 76, 70, 74, 74, 78, 74),
+    badges: [
+      b("Catch & Shoot", "Shooting", "A"), b("Corner Specialist", "Shooting", "A"),
+      b("Limitless Range", "Shooting", "B"), b("Clamps", "Defense", "B"),
+      b("Set Shot Specialist", "Shooting", "B"), b("Rebound Chaser", "Rebounding", "C"),
+    ],
+    last10: l10(15.4, 6.2, 1.8, 0.444, 0.378, 1.2),
+    recentGames: groomGames("SAC", 323),
+    predicted: { nextDelta: 0, reason: "3&D forward. Holds 82.", confidence: "high" },
+  },
+  {
+    id: "brandon-miller",
+    firstName: "Brandon", lastName: "Miller", displayName: "Brandon Miller",
+    team: "CHA", position: "SF", height: "6'9\"", weightLb: 200, age: 23,
+    rating2k: 83, ratingDelta: 2, archetypeId: "TWO_WAY_THREE_LEVEL",
+    attributes: a(82, 78, 80, 76, 80, 70, 76, 60, 68, 76, 72, 78),
+    badges: [
+      b("Limitless Range", "Shooting", "A"), b("Step Back Pure", "Shooting", "A"),
+      b("Deadeye", "Shooting", "B"), b("Slippery Off-Ball", "Finishing", "B"),
+      b("Clamps", "Defense", "B"), b("Mismatch Expert", "Shooting", "B"),
+    ],
+    last10: l10(22.6, 5.4, 3.4, 0.454, 0.382, -2.8),
+    recentGames: groomGames("CHA", 329),
+    predicted: { nextDelta: 2, reason: "Year-3 leap. Volume + efficiency up.", confidence: "med" },
+  },
+  {
+    id: "kuminga",
+    firstName: "Jonathan", lastName: "Kuminga", displayName: "Jonathan Kuminga",
+    team: "GSW", position: "PF", height: "6'7\"", weightLb: 225, age: 23,
+    rating2k: 82, ratingDelta: 1, archetypeId: "TWO_WAY_SLASHER",
+    attributes: a(70, 72, 84, 88, 72, 60, 76, 68, 70, 82, 84, 86),
+    badges: [
+      b("Posterizer", "Finishing", "A"), b("Fearless Finisher", "Finishing", "A"),
+      b("Pogo Stick", "Physical", "A"), b("Bulldozer", "Physical", "B"),
+      b("Slippery Off-Ball", "Finishing", "B"), b("Clamps", "Defense", "C"),
+    ],
+    last10: l10(17.4, 4.8, 2.4, 0.504, 0.328, 1.8),
+    recentGames: groomGames("GSW", 331),
+    predicted: { nextDelta: 1, reason: "Athletic slasher on a contender. Climbing.", confidence: "med" },
+  },
+  {
+    id: "reaves",
+    firstName: "Austin", lastName: "Reaves", displayName: "Austin Reaves",
+    team: "LAL", position: "SG", height: "6'5\"", weightLb: 197, age: 27,
+    rating2k: 83, ratingDelta: 0, archetypeId: "TWO_WAY_SHOT_CREATOR",
+    attributes: a(80, 78, 82, 64, 82, 80, 70, 56, 60, 74, 74, 64),
+    badges: [
+      b("Dimer", "Playmaking", "A"), b("Limitless Range", "Shooting", "A"),
+      b("Catch & Shoot", "Shooting", "A"), b("Step Back Pure", "Shooting", "B"),
+      b("Middy Magician", "Shooting", "B"), b("Triple Threat Juke", "Playmaking", "B"),
+    ],
+    last10: l10(18.2, 4.4, 5.6, 0.474, 0.392, 2.4),
+    recentGames: groomGames("LAL", 337),
+    predicted: { nextDelta: 0, reason: "Reliable third option. Holds 83.", confidence: "high" },
+  },
+  {
+    id: "mathurin",
+    firstName: "Bennedict", lastName: "Mathurin", displayName: "Bennedict Mathurin",
+    team: "IND", position: "SG", height: "6'5\"", weightLb: 210, age: 24,
+    rating2k: 81, ratingDelta: 0, archetypeId: "OFFENSIVE_THREAT",
+    attributes: a(78, 76, 84, 82, 74, 62, 68, 56, 66, 78, 78, 82),
+    badges: [
+      b("Posterizer", "Finishing", "A"), b("Limitless Range", "Shooting", "B"),
+      b("Corner Specialist", "Shooting", "B"), b("Slippery Off-Ball", "Finishing", "B"),
+      b("Fearless Finisher", "Finishing", "B"), b("Catch & Shoot", "Shooting", "B"),
+    ],
+    last10: l10(16.4, 4.6, 2.2, 0.464, 0.358, 0.6),
+    recentGames: groomGames("IND", 341),
+    predicted: { nextDelta: 0, reason: "Scorer off bench. Holds 81.", confidence: "med" },
+  },
+  {
+    id: "poole",
+    firstName: "Jordan", lastName: "Poole", displayName: "Jordan Poole",
+    team: "WAS", position: "SG", height: "6'4\"", weightLb: 194, age: 26,
+    rating2k: 80, ratingDelta: -1, archetypeId: "OFFENSIVE_THREAT",
+    attributes: a(82, 76, 78, 70, 84, 72, 62, 50, 54, 78, 70, 72),
+    badges: [
+      b("Limitless Range", "Shooting", "A"), b("Step Back Pure", "Shooting", "A"),
+      b("Killer Combos", "Playmaking", "B"), b("Deadeye", "Shooting", "B"),
+      b("Heat Check", "Shooting", "B"), b("Handles for Days", "Playmaking", "C"),
+    ],
+    last10: l10(20.4, 2.8, 4.6, 0.418, 0.342, -6.2),
+    recentGames: groomGames("WAS", 343),
+    predicted: { nextDelta: -1, reason: "Inefficient volume. Trending down.", confidence: "med" },
+  },
 ];
 
 // Filler that uses common opponent set per team.
@@ -1278,3 +1413,41 @@ export const ARCHETYPE_LABELS: Record<string, string> = {
   POST_SCORER: "Post Scorer",
   GLUE_C: "Glue Center",
 };
+
+// Map player-side archetype keys (UPPER_SNAKE) to Build Lab archetype ids
+// (kebab-case as defined in lib/builds.ts ARCHETYPES). This lets a player's
+// "Closest archetype" deep-link into /builds?arche=<buildId>.
+export const PLAYER_TO_BUILD_ARCHE: Record<string, string> = {
+  THREE_LEVEL: "three-level",
+  TWO_WAY_THREE_LEVEL: "three-level",
+  TWO_WAY_SHOT_CREATOR: "playmaker-creator",
+  TWO_WAY_SLASHER: "two-way-slasher",
+  TWO_WAY_SHARP: "sharp-2way",
+  TWO_WAY_STRETCH: "two-way-stretch",
+  TWO_WAY_INSIDE_OUT: "inside-out",
+  OFFENSIVE_THREAT: "iso-scorer",
+  PURE_SHARP: "spot-up-shooter",
+  FLOOR_GENERAL: "pure-pg",
+  POINT_FORWARD: "point-forward",
+  POINT_CENTER: "facilitator-c",
+  PAINT_BEAST: "paint-beast",
+  POST_SCORER: "post-scorer",
+  GLUE_C: "facilitator-c",
+};
+
+// Resolve a player archetype id to the matching Build Lab archetype id.
+// Falls back to a sane default so the /builds link is never broken.
+export function buildArcheFor(playerArcheId: string): string {
+  return PLAYER_TO_BUILD_ARCHE[playerArcheId] ?? "do-everything";
+}
+
+// Resolve a player's `id` by display name (case-insensitive, trimmed).
+// Used to deep-link from Scenarios / Pulse references → /players?id=...
+export function getPlayerIdByName(name: string): string | undefined {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return undefined;
+  const exact = PLAYERS.find((p) => p.displayName.toLowerCase() === needle);
+  if (exact) return exact.id;
+  // Fallback: match on last name token (handles minor punctuation drift).
+  return PLAYERS.find((p) => p.lastName.toLowerCase() === needle)?.id;
+}

@@ -1080,11 +1080,11 @@ function ShotTrainerInner() {
       </section>
 
       {/* Meter + result */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
         {/* Meter (vertical) */}
         <div className="flex items-stretch justify-center">
           <div
-            className={`relative h-[340px] w-20 overflow-hidden rounded-xl border bg-surface2 transition ${flashClass} ${streakGlow}`}
+            className={`relative h-[340px] w-[88px] overflow-hidden rounded-xl border bg-surface2 transition md:h-[380px] md:w-28 ${flashClass} ${streakGlow}`}
             aria-label="Shot meter"
             role="img"
           >
@@ -1118,10 +1118,10 @@ function ShotTrainerInner() {
               style={{ height: `${meterFill * 100}%` }}
             />
 
-            {/* Release tick (after shot) */}
+            {/* Release tick (after shot) — bright marker, fades over result phase */}
             {lastResult && phase === "result" && (
               <div
-                className="absolute inset-x-0 h-0.5 bg-ink"
+                className="absolute inset-x-0 h-0.5 bg-ink shadow-[0_0_6px_rgba(255,255,255,0.55)] transition-opacity duration-[600ms]"
                 style={{
                   bottom: `${
                     Math.min(
@@ -1134,14 +1134,17 @@ function ShotTrainerInner() {
                       )
                     )
                   }%`,
+                  opacity: 1,
                 }}
+                aria-hidden
               />
             )}
 
             {/* Perfect center line */}
             <div
-              className="absolute inset-x-0 h-px bg-gold/80"
+              className="absolute inset-x-0 h-[3px] -translate-y-1/2 bg-gold shadow-[0_0_8px_rgba(255,214,10,0.6)]"
               style={{ bottom: `${perfectCenterPct}%` }}
+              aria-hidden
             />
           </div>
         </div>

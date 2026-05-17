@@ -15,6 +15,23 @@ import {
   todayKey,
   yesterdayKey,
 } from "@/lib/scenarios";
+import { getPlayerIdByName } from "@/lib/players";
+import { ARCHETYPES } from "@/lib/builds";
+
+// Slugify same way the badges page generates ids (lib/badges.ts).
+const refSlug = (n: string) =>
+  n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// Map a scenario "build" reference name to a Build Lab archetype id.
+// Tries exact (case-insensitive) match on archetype name, then slug match.
+function buildArcheIdFromName(name: string): string | null {
+  const target = name.trim().toLowerCase();
+  if (!target) return null;
+  const exact = ARCHETYPES.find((a) => a.name.toLowerCase() === target);
+  if (exact) return exact.id;
+  const slug = refSlug(name);
+  return ARCHETYPES.find((a) => refSlug(a.name) === slug)?.id ?? null;
+}
 
 const STORAGE_KEY = "2klab.scenarios";
 const POINTS_KEY = "2klab.scenarios.points";
@@ -1003,13 +1020,16 @@ function OptionRow({
 }
 
 function ReferenceLink({ kind, name }: { kind: "player" | "build" | "badge"; name: string }) {
-  const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-  const href =
-    kind === "player"
-      ? `/players#${slug}`
-      : kind === "build"
-      ? `/builds#${slug}`
-      : `/badges#${slug}`;
+  let href = "";
+  if (kind === "player") {
+    const id = getPlayerIdByName(name);
+    href = id ? `/players?id=${id}` : "/players";
+  } else if (kind === "build") {
+    const archeId = buildArcheIdFromName(name);
+    href = archeId ? `/builds?arche=${archeId}` : "/builds";
+  } else {
+    href = `/badges#${refSlug(name)}`;
+  }
   const tone =
     kind === "player" ? "ice" : kind === "build" ? "gold" : "lime";
   return (

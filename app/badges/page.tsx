@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   BADGES,
   BADGE_CATEGORIES,
@@ -12,11 +13,31 @@ import {
   type BadgeCategory,
   type BadgeTier,
 } from "@/lib/badges";
+import { ARCHETYPES } from "@/lib/builds";
 import { Card, Pill, Stat, TierBadge } from "@/components/ui";
 
 const TIERS: BadgeTier[] = ["S", "A", "B", "C", "D"];
 const TIER_ORDER: Record<BadgeTier, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 };
 const CATEGORY_OPTIONS: ("All" | BadgeCategory)[] = ["All", ...BADGE_CATEGORIES];
+
+// Pre-index which Build Lab archetypes feature each badge name.
+// Top 3 by tier (S → A → B → ...) so links surface the strongest fit first.
+const BADGE_ARCHE_INDEX: Record<string, { id: string; name: string }[]> = (() => {
+  const rank: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 };
+  const acc: Record<string, { id: string; name: string; tier: string }[]> = {};
+  for (const a of ARCHETYPES) {
+    for (const b of a.badges) {
+      const arr = acc[b.name] ?? (acc[b.name] = []);
+      arr.push({ id: a.id, name: a.name, tier: b.tier });
+    }
+  }
+  const out: Record<string, { id: string; name: string }[]> = {};
+  for (const [name, list] of Object.entries(acc)) {
+    list.sort((x, y) => rank[x.tier] - rank[y.tier]);
+    out[name] = list.slice(0, 3).map((x) => ({ id: x.id, name: x.name }));
+  }
+  return out;
+})();
 
 type SortKey = "tier" | "name" | "patch" | "personal";
 type ViewMode = "official" | "personal";
@@ -54,6 +75,9 @@ export default function BadgesPage() {
   const [personalTiers, setPersonalTiers] = useState<Record<string, BadgeTier>>({});
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [buffedOnly, setBuffedOnly] = useState<boolean>(false);
+
+  const latestPatch = PATCH_NOTES[0]?.patch ?? "";
 
   // Share modal
   const [shareOpen, setShareOpen] = useState(false);
@@ -105,6 +129,12 @@ export default function BadgesPage() {
       );
     }
     list = list.filter((b) => tierFilter.has(effectiveTier(b)));
+    if (buffedOnly) {
+      list = list.filter((b) => {
+        const latest = b.patchHistory[0];
+        return latest && latest.delta > 0;
+      });
+    }
 
     switch (sort) {
       case "name":
@@ -131,7 +161,7 @@ export default function BadgesPage() {
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, query, tierFilter, sort, view, personalTiers]);
+  }, [category, query, tierFilter, sort, view, personalTiers, buffedOnly]);
 
   const counts = useMemo(() => {
     const list = BADGES.map((b) => ({ ...b, tier: effectiveTier(b) }));
@@ -365,7 +395,7 @@ export default function BadgesPage() {
       </section>
 
       {/* Sticky filter bar */}
-      <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
+      <div className="sticky top-[57px] z-40 -mx-4 mb-6 border-b border-line/60 bg-bg/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-bg/70 md:-mx-6 md:px-6">
         {/* Category chips */}
         <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {CATEGORY_OPTIONS.map((c) => {
@@ -388,7 +418,7 @@ export default function BadgesPage() {
 
         {/* Tier chips + search + sort + view */}
         <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {TIERS.map((t) => {
               const active = tierFilter.has(t);
               return (
@@ -406,6 +436,21 @@ export default function BadgesPage() {
                 </button>
               );
             })}
+            {latestPatch && (
+              <button
+                type="button"
+                onClick={() => setBuffedOnly((v) => !v)}
+                aria-pressed={buffedOnly}
+                className={`h-8 rounded-md border px-2.5 text-[11px] font-semibold uppercase tracking-wider transition ${
+                  buffedOnly
+                    ? "border-lime bg-lime/15 text-lime"
+                    : "border-lime/40 bg-lime/5 text-lime/70 hover:text-lime"
+                }`}
+                title={`Show only badges buffed in patch ${latestPatch}`}
+              >
+                Buffed {latestPatch}
+              </button>
+            )}
           </div>
 
           <input
@@ -500,9 +545,12 @@ export default function BadgesPage() {
             D: "border-l-tierD",
           }[t];
 
+          const usedBy = BADGE_ARCHE_INDEX[b.name] ?? [];
+
           return (
             <Card
               key={b.id}
+              id={b.id}
               className={`relative flex flex-col gap-3 border-0 border-l-2 ${tierBorderClass} transition ${
                 isCompared ? "ring-1 ring-ice" : ""
               }`}
@@ -595,6 +643,33 @@ export default function BadgesPage() {
                           .map((id) => BADGES.find((x) => x.id === id)?.name)
                           .filter(Boolean)
                           .join(" · ")}
+                      </div>
+                    </div>
+                  )}
+
+                  {usedBy.length > 0 && (
+                    <div className="text-[11px]">
+                      <div className="font-semibold uppercase tracking-wider text-muted">
+                        Used by
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        {usedBy.map((a, i) => (
+                          <span key={a.id} className="text-muted">
+                            <Link
+                              href={`/builds?arche=${a.id}`}
+                              className="text-ink hover:text-flame hover:underline"
+                            >
+                              {a.name}
+                            </Link>
+                            {i < usedBy.length - 1 ? " · " : ""}
+                          </span>
+                        ))}
+                        <Link
+                          href="/builds"
+                          className="text-muted hover:text-ink"
+                        >
+                          all builds →
+                        </Link>
                       </div>
                     </div>
                   )}

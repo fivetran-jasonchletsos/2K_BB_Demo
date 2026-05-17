@@ -13,6 +13,7 @@ type SavedBuild = {
   position: string;
   height: string;
   archetype: string;
+  archetypeId?: string;
   updatedAt: number;
 };
 
@@ -97,7 +98,7 @@ export default function Home() {
           <h1 className="mt-1 font-display text-5xl leading-none tracking-wide text-ink md:text-7xl">
             2K LAB
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-muted">
+          <p className="mt-2 max-w-xl text-base text-muted md:text-sm">
             NBA 2K26 reference · live data refreshed hourly
           </p>
         </div>
@@ -176,6 +177,27 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {saved && saved.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+                  Recently used by
+                </span>
+                {saved.slice(0, 3).map((b) => (
+                  <Link
+                    key={b.id}
+                    href={
+                      b.archetypeId
+                        ? `/builds?arche=${b.archetypeId}`
+                        : "/builds"
+                    }
+                    className="rounded-full border border-line bg-surface2 px-2.5 py-0.5 text-[11px] font-semibold text-ink hover:border-flame/60 hover:text-flame"
+                  >
+                    {b.name}
+                  </Link>
+                ))}
+              </div>
+            )}
           </Card>
         </section>
       )}

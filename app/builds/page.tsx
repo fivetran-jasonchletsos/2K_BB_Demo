@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Bar, Card, Pill, TierBadge } from "@/components/ui";
 import {
@@ -911,6 +912,12 @@ function BuildLabPageInner() {
                 <div className="mt-2 text-[11px] text-muted">
                   Closest real {build.position} for this archetype.
                 </div>
+                <Link
+                  href={`/players?arche=${build.archetypeId}`}
+                  className="mt-2 inline-block text-[11px] font-semibold uppercase tracking-wider text-ice hover:text-ink"
+                >
+                  Players who play like this →
+                </Link>
               </Card>
             </div>
 
