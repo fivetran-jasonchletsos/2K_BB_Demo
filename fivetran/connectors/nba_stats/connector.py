@@ -3,6 +3,19 @@
 Pulls NBA play-by-play, box scores, lineups, and shot chart detail from the
 public-but-undocumented stats.nba.com JSON endpoints.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as Iceberg
+tables under the `bronze_nba_stats` schema. Tables registered in the MDLS
+catalog (Glue or Polaris):
+    bronze_nba_stats.box_scores
+    bronze_nba_stats.play_by_play
+    bronze_nba_stats.lineups
+    bronze_nba_stats.shot_chart_detail
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query these tables directly off S3. Destination config (S3
+bucket, catalog) is set on the MDLS destination in the Fivetran UI, not
+here.
+
 IMPORTANT: stats.nba.com aggressively blocks requests that look like bots.
 You must send browser-like headers:
 

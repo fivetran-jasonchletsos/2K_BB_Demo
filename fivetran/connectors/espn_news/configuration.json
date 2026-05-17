@@ -1,0 +1,3 @@
+{
+  "_readme": "Source config only (no source credentials required for ESPN public JSON). Pair this connector with an MDLS destination (S3 + Iceberg + Glue/Polaris catalog) configured in the Fivetran UI; target schema bronze_espn_news."
+}

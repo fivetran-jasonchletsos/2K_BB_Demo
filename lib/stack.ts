@@ -28,6 +28,21 @@ export type Source = {
   errorPct: number; // 0-100
   errorThresholdPct: number;
   status: SourceStatus;
+  // Lake-first destination metadata
+  destination: string; // e.g. mdls.bronze_balldontlie
+  format: "iceberg";
+};
+
+export type EngineKind = "snowflake" | "athena" | "databricks" | "trino";
+export type EngineStatus = "enabled" | "optional";
+
+export type Engine = {
+  id: string;
+  name: string;
+  kind: EngineKind;
+  catalogReader: string;
+  dbtAdapter: string;
+  status: EngineStatus;
 };
 
 export type Materialization = "view" | "table" | "incremental" | "ephemeral";
@@ -84,6 +99,8 @@ export const SOURCES: Source[] = [
     errorPct: 0.2,
     errorThresholdPct: 1.0,
     status: "green",
+    destination: "mdls.bronze_balldontlie",
+    format: "iceberg",
   },
   {
     id: "nba_stats",
@@ -105,6 +122,8 @@ export const SOURCES: Source[] = [
     errorPct: 0.9,
     errorThresholdPct: 1.0,
     status: "amber",
+    destination: "mdls.bronze_nba_stats",
+    format: "iceberg",
   },
   {
     id: "reddit_2k",
@@ -126,6 +145,8 @@ export const SOURCES: Source[] = [
     errorPct: 0.1,
     errorThresholdPct: 1.0,
     status: "green",
+    destination: "mdls.bronze_reddit_2k",
+    format: "iceberg",
   },
   {
     id: "twokratings",
@@ -147,6 +168,8 @@ export const SOURCES: Source[] = [
     errorPct: 0.0,
     errorThresholdPct: 2.0,
     status: "green",
+    destination: "mdls.bronze_twokratings",
+    format: "iceberg",
   },
   {
     id: "espn_news",
@@ -168,6 +191,8 @@ export const SOURCES: Source[] = [
     errorPct: 0.3,
     errorThresholdPct: 1.0,
     status: "green",
+    destination: "mdls.bronze_espn_news",
+    format: "iceberg",
   },
   {
     id: "locker_codes",
@@ -189,6 +214,8 @@ export const SOURCES: Source[] = [
     errorPct: 1.4,
     errorThresholdPct: 1.0,
     status: "red",
+    destination: "mdls.bronze_locker_codes",
+    format: "iceberg",
   },
   {
     id: "snowflake_internal",
@@ -210,6 +237,46 @@ export const SOURCES: Source[] = [
     errorPct: 0.0,
     errorThresholdPct: 1.0,
     status: "green",
+    destination: "mdls.bronze_snowflake_meta",
+    format: "iceberg",
+  },
+];
+
+// Catalog-compatible read engines. Same Iceberg tables in MDLS — different
+// query engines. Snowflake and Athena are wired in dbt/profiles.example.yml;
+// Databricks and Trino are catalog-readable but not configured in this demo.
+export const ENGINES: Engine[] = [
+  {
+    id: "snowflake",
+    name: "Snowflake-on-Iceberg",
+    kind: "snowflake",
+    catalogReader: "EXTERNAL VOLUME + CATALOG INTEGRATION (Polaris)",
+    dbtAdapter: "dbt-snowflake",
+    status: "enabled",
+  },
+  {
+    id: "athena",
+    name: "Amazon Athena",
+    kind: "athena",
+    catalogReader: "AWS Glue Iceberg REST catalog",
+    dbtAdapter: "dbt-athena",
+    status: "enabled",
+  },
+  {
+    id: "databricks",
+    name: "Databricks SQL",
+    kind: "databricks",
+    catalogReader: "Unity Catalog Iceberg federation",
+    dbtAdapter: "dbt-databricks",
+    status: "optional",
+  },
+  {
+    id: "trino",
+    name: "Trino",
+    kind: "trino",
+    catalogReader: "Iceberg REST catalog connector",
+    dbtAdapter: "dbt-trino",
+    status: "optional",
   },
 ];
 
@@ -458,11 +525,23 @@ export const HIGHLIGHT_MARTS: HighlightMart[] = [
 
 export const PIPELINE_STATS = {
   sources: SOURCES.length,
+  // Bronze tables = one Iceberg table in MDLS per ingested source table.
+  bronzeTables: SOURCES.reduce((n, s) => n + s.tables.length, 0),
+  // Back-compat alias: same number, lake-first label.
   tablesIngested: SOURCES.reduce((n, s) => n + s.tables.length, 0),
   models: MODELS.length,
   dailyRowsIngested: SOURCES.reduce((n, s) => n + s.rowsToday, 0),
   latencyMinutesP50: 7,
   latencyMinutesP95: 22,
+  engineCount: 4,
+  enabledEngineCount: 2,
+  // Labels reflect the lake-first architecture.
+  labels: {
+    sources: "SDK connectors",
+    bronzeTables: "bronze Iceberg tables in MDLS",
+    models: "dbt models on Iceberg",
+    engines: "catalog-compatible read engines",
+  },
 };
 
 // End-to-end timing across the lifecycle stages. Seconds.
@@ -518,8 +597,8 @@ export const LIFECYCLE_STAGES: {
 }[] = [
   { n: 1, stage: "generation", system: "balldontlie · NBA.com · Reddit · ESPN · 2KRatings · codes" },
   { n: 2, stage: "ingestion", system: "Fivetran Connector SDK" },
-  { n: 3, stage: "storage", system: "Snowflake RAW schemas" },
-  { n: 4, stage: "transformation", system: "dbt — staging / intermediate / marts" },
+  { n: 3, stage: "storage", system: "MDLS · Iceberg · Glue/Polaris catalog" },
+  { n: 4, stage: "transformation", system: "dbt on Iceberg — staging / intermediate / marts" },
   { n: 5, stage: "serving", system: "Next.js App Router (ISR)" },
 ];
 

@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import {
   END_TO_END_TIMING,
+  ENGINES,
   HIGHLIGHT_MARTS,
   LIFECYCLE_STAGES,
   LINEAGE,
@@ -308,6 +309,55 @@ function SourcesBoxScore() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// 3b. Read engines (catalog-compatible)
+// ───────────────────────────────────────────────────────────────────────────
+
+function EnginesBlock() {
+  return (
+    <div>
+      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+        {ENGINES.map((e) => {
+          const enabled = e.status === "enabled";
+          return (
+            <div
+              key={e.id}
+              className={`border px-3 py-2 ${
+                enabled
+                  ? "border-line bg-surface"
+                  : "border-line/60 bg-surface/60"
+              }`}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-[12px] uppercase tracking-wider text-ink">
+                  {e.name}
+                </span>
+                <span
+                  className={`font-mono text-[10px] uppercase tracking-wider ${
+                    enabled ? "text-lime" : "text-muted"
+                  }`}
+                >
+                  {e.status}
+                </span>
+              </div>
+              <dl className="mt-1.5 grid grid-cols-[64px_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+                <dt className="text-muted">reader</dt>
+                <dd className="font-mono text-ink">{e.catalogReader}</dd>
+                <dt className="text-muted">adapter</dt>
+                <dd className="font-mono text-ink">{e.dbtAdapter}</dd>
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 text-[10px] text-muted">
+        same Iceberg tables in MDLS · {ENGINES.filter((e) => e.status === "enabled").length} enabled in
+        dbt/profiles.example.yml · {ENGINES.filter((e) => e.status === "optional").length} catalog-readable but not configured
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // 4. Lineage graph
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -526,7 +576,7 @@ function HeaderStrip() {
           STACK
         </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Six sources, three marts, end-to-end latency 4 min p95.
+          Six sources, three marts, four read engines. Iceberg-native via MDLS.
         </p>
       </div>
       <div className="flex gap-6 md:gap-8">
@@ -627,22 +677,31 @@ export default function StackPage() {
       </section>
 
       <section>
-        <H n="03" title="lineage" hint={`${MODELS.length} models · ${LINEAGE.length} edges`} />
+        <H
+          n="03"
+          title="read engines"
+          hint={`${ENGINES.length} catalog-compatible · same Iceberg tables`}
+        />
+        <EnginesBlock />
+      </section>
+
+      <section>
+        <H n="04" title="lineage" hint={`${MODELS.length} models · ${LINEAGE.length} edges`} />
         <LineageGraph />
       </section>
 
       <section>
-        <H n="04" title="marts" hint="schema · grain · refresh · consumers" />
+        <H n="05" title="marts" hint="schema · grain · refresh · consumers" />
         <MartsGrid />
       </section>
 
       <section>
-        <H n="05" title="timing" hint="seconds per stage · bar=actual · tick=target" />
+        <H n="06" title="timing" hint="seconds per stage · bar=actual · tick=target" />
         <TimingBullets />
       </section>
 
       <section>
-        <H n="06" title="undercurrents" />
+        <H n="07" title="undercurrents" />
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
           {UNDERCURRENTS.map((u, i) => (
             <span key={u} className="font-mono">
@@ -656,7 +715,7 @@ export default function StackPage() {
       </section>
 
       <section>
-        <H n="07" title="receipts" hint="tap to expand" />
+        <H n="08" title="receipts" hint="tap to expand" />
         <div className="space-y-2">
           <CodeReceipt label="fivetran/balldontlie/connector.py · update()" body={CONNECTOR_PY} />
           <CodeReceipt label="dbt/marts/mart_rating_predictions.sql" body={MART_SQL} />

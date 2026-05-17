@@ -5,6 +5,15 @@ JSON endpoint. The endpoint is configurable so we can repoint without
 re-deploying. A reasonable default is a static JSON file hosted on
 GitHub Pages / Vercel.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as an
+Iceberg table under the `bronze_locker_codes` schema. Table registered in
+the MDLS catalog (Glue or Polaris):
+    bronze_locker_codes.drops
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query this table directly off S3. Destination config (S3 bucket,
+catalog) is set on the MDLS destination in the Fivetran UI, not here.
+
 Expected upstream JSON shape:
 {
   "fetched_at": "2026-05-16T12:00:00Z",

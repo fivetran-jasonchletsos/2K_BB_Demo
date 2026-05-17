@@ -27,8 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               Data pipeline:{" "}
-              <span className="text-ink">Fivetran Connector SDK</span> →{" "}
-              <span className="text-ink">Snowflake</span> →{" "}
+              <span className="text-ink">Fivetran SDK</span> →{" "}
+              <span className="text-ink">MDLS (Iceberg)</span> →{" "}
+              <span className="text-ink">multi-engine</span> →{" "}
               <span className="text-ink">dbt</span> →{" "}
               <span className="text-ink">Next.js</span>
             </div>

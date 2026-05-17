@@ -3,6 +3,17 @@
 Scrapes the community-curated 2KRatings.com player ratings index. We treat
 this source as advisory ground truth — it is NOT an official 2K data feed.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as Iceberg
+tables under the `bronze_twokratings` schema. Tables registered in the MDLS
+catalog (Glue or Polaris):
+    bronze_twokratings.player_ratings
+    bronze_twokratings.rating_history
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query these tables directly off S3. Destination config (S3
+bucket, catalog) is set on the MDLS destination in the Fivetran UI, not
+here.
+
 Pages scraped:
     https://www.2kratings.com/lists/top-100-highest-rated-current-players-nba-2k26
     https://www.2kratings.com/teams/{team-slug}            (roster pages)

@@ -3,6 +3,18 @@
 Pulls NBA reference data (teams, players, games, stats, season_averages) from
 the public balldontlie REST API.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as Iceberg
+tables under the `bronze_balldontlie` schema. Tables registered in the MDLS
+catalog (Glue or Polaris):
+    bronze_balldontlie.teams
+    bronze_balldontlie.players
+    bronze_balldontlie.games
+    bronze_balldontlie.stats
+    bronze_balldontlie.season_averages
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query these tables directly off S3.
+
 Endpoints (v1):
     GET /v1/teams
     GET /v1/players?cursor=...&per_page=100
@@ -12,7 +24,8 @@ Endpoints (v1):
 
 Auth: `Authorization: <api_key>` header (free tier supports basic endpoints,
 paid tiers unlock stats/season_averages). API key is supplied via
-`configuration.json`.
+`configuration.json`. Destination config (S3 bucket, catalog) is set on the
+MDLS destination in the Fivetran UI, not here.
 
 State / cursors:
     - players are full-refreshed (small table, no public delta)

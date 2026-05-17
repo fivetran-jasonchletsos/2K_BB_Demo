@@ -16,23 +16,34 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
-# Snowflake adapter; schemas are namespaced per layer via `+schema`.
-# Together with the warehouse default schema (set in profiles), models land in
-#   <db>.nba_raw_stg / nba_int / nba_marts
+# Data lives in MDLS (Managed Data Lake Service) as Iceberg tables in S3,
+# registered in a shared catalog (AWS Glue). Fivetran lands raw rows into
+# `bronze_<source>` schemas. This dbt project builds silver (staging +
+# intermediate) and gold (marts) ON TOP of those bronze Iceberg tables.
+#
+# Engine is independent: the same models run on either
+#   - Snowflake-on-Iceberg (target: snowflake_iceberg)
+#   - Athena/Trino on Glue (target: athena_iceberg)
+#
+# Schemas land at:
+#   silver_stg  -> staging views
+#   silver_int  -> intermediate tables
+#   gold        -> marts (incremental Iceberg)
 models:
   nba_2k_lab:
     +materialized: view
     staging:
-      +schema: raw_stg
-      +tags: ["staging"]
+      +materialized: view
+      +schema: silver_stg
+      +tags: ["staging", "silver"]
     intermediate:
       +materialized: table
-      +schema: int
-      +tags: ["intermediate"]
+      +schema: silver_int
+      +tags: ["intermediate", "silver"]
     marts:
       +materialized: table
-      +schema: marts
-      +tags: ["marts"]
+      +schema: gold
+      +tags: ["marts", "gold"]
 
 vars:
   # Used by int_player_recent_form to define the rolling window.

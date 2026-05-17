@@ -1,32 +1,68 @@
-# Copy to ~/.dbt/profiles.yml and fill in real values.
-# Combined with dbt_project.yml's `+schema:` overrides, models will land in:
-#   <database>.nba_raw_stg / nba_int / nba_marts
+# ============================================================
+# dbt profile: nba_2k_lab
+#
+# Data sources are Iceberg tables in MDLS (Managed Data Lake
+# Service): Fivetran lands rows into S3 (Parquet/Iceberg) and
+# registers them in a shared catalog (AWS Glue). The SAME
+# bronze tables are queryable from multiple engines.
+#
+# Copy this file to ~/.dbt/profiles.yml and fill in real values.
+#
+# Two engine targets are provided. They read the IDENTICAL
+# bronze_<source> Iceberg tables; only the compute changes:
+#
+#   snowflake_iceberg   primary target. Snowflake reads Iceberg
+#                       via an external volume + catalog
+#                       integration pointed at Glue.
+#   athena_iceberg      alternative target. dbt-athena-community
+#                       on the same Glue catalog + S3 bucket.
+#
+# Combined with dbt_project.yml's `+schema:` overrides, models
+# land in: silver_stg / silver_int / gold.
+# ============================================================
 
 nba_2k_lab:
-  target: dev
+  target: snowflake_iceberg
   outputs:
-    dev:
+
+    # ----------------------------------------------------------
+    # Primary: Snowflake-on-Iceberg.
+    # External volume points at the same S3 bucket MDLS writes
+    # to. Catalog integration is a Glue-backed Iceberg catalog,
+    # so Snowflake reads the exact same table files Athena does.
+    # ----------------------------------------------------------
+    snowflake_iceberg:
       type: snowflake
-      account: "<your_account>.us-east-1"
-      user: "<your_user>"
-      password: "<your_password>"     # or use private_key_path
-      role: NBA_2K_LAB_DEV
-      database: NBA_2K_LAB
-      warehouse: NBA_2K_LAB_WH
-      schema: nba              # base schema; layer schemas prefix this (nba_raw_stg, nba_int, nba_marts)
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', '<your_account>.us-east-1') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', '<your_user>') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '<your_password>') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'NBA_2K_LAB_DEV') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'NBA_2K_LAB') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'NBA_2K_LAB_WH') }}"
+      schema: nba
       threads: 8
       client_session_keep_alive: false
       query_tag: dbt-nba-2k-lab
+      # Iceberg-specific config: tables created by dbt with
+      # table_type='iceberg' will land on this external volume
+      # and register in this catalog integration.
+      external_volume: "{{ env_var('SNOWFLAKE_EXTERNAL_VOLUME', 'mdls_iceberg_vol') }}"
+      catalog: "{{ env_var('SNOWFLAKE_CATALOG_INTEGRATION', 'mdls_glue_catalog') }}"
+      base_location_prefix: "nba_2k_lab/"
 
-    prod:
-      type: snowflake
-      account: "<your_account>.us-east-1"
-      user: "<your_user>"
-      private_key_path: "/path/to/rsa_key.p8"
-      private_key_passphrase: "<passphrase>"
-      role: NBA_2K_LAB_PROD
-      database: NBA_2K_LAB
-      warehouse: NBA_2K_LAB_WH
-      schema: nba
-      threads: 16
-      query_tag: dbt-nba-2k-lab-prod
+    # ----------------------------------------------------------
+    # Alternative: Athena on the same Glue catalog + S3 bucket.
+    # AWS credentials follow the standard boto3 chain
+    # (env vars / shared config / IAM role).
+    # ----------------------------------------------------------
+    athena_iceberg:
+      type: athena
+      region_name: "{{ env_var('AWS_REGION', 'us-east-1') }}"
+      database: awsdatacatalog
+      schema: nba_2k_lab
+      s3_staging_dir: "s3://{{ env_var('MDLS_BUCKET', 'mdls-nba-2k-lab') }}/athena-results/"
+      s3_data_dir: "s3://{{ env_var('MDLS_BUCKET', 'mdls-nba-2k-lab') }}/dbt/"
+      s3_data_naming: schema_table
+      work_group: "{{ env_var('ATHENA_WORKGROUP', 'nba_2k_lab') }}"
+      threads: 4
+      num_retries: 2

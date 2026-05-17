@@ -2,6 +2,17 @@
 
 Pulls new posts and top-level comments from the 2K-focused subreddits.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as Iceberg
+tables under the `bronze_reddit_2k` schema. Tables registered in the MDLS
+catalog (Glue or Polaris):
+    bronze_reddit_2k.posts
+    bronze_reddit_2k.comments
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query these tables directly off S3. Destination config (S3
+bucket, catalog) is set on the MDLS destination in the Fivetran UI, not
+here — this connector config only carries Reddit OAuth credentials.
+
 OAuth2 (script app):
     1. Create a Reddit script-type application at
        https://www.reddit.com/prefs/apps

@@ -30,26 +30,82 @@ To deploy publicly: push to GitHub, import the repo at https://vercel.com — on
 
 ## ODI demo angle
 
-Real architecture:
+Real architecture — Fivetran SDK lands six sources into **MDLS** (Managed
+Data Lake Service: S3 + Iceberg + catalog), and any compute engine reads
+the same Iceberg tables. dbt runs against whichever engine is wired up;
+Next.js consumes either pre-built JSON snapshots or a live engine query.
 
 ```
-Sources               Fivetran SDK         Snowflake        dbt                Next.js
-─────────────         ──────────────       ──────────       ──────────         ──────────
-balldontlie     ─┐
-NBA Stats        ├──→  custom connectors ──→  raw schema ──→ stg/int/marts ──→  /pulse, /players
-ESPN news        │     (Python)
-Reddit r/NBA2K   │
-2KRatings.com    │
-Locker code feeds┘
+   Sources                  Fivetran SDK
+   ─────────────            ──────────────
+   balldontlie       ─┐
+   NBA Stats          │
+   ESPN news          ├──→  6 custom connectors  ─┐
+   Reddit r/NBA2K     │     (Python)               │
+   2KRatings.com      │                            │
+   Locker code feeds ─┘                            │
+                                                   ▼
+                       ┌──────────────────────────────────────────────┐
+                       │  MDLS destination                            │
+                       │  ──────────────────────────────────────────  │
+                       │  S3 · Apache Iceberg · Glue/Polaris Catalog  │
+                       │  bronze_<source>.<table>                     │
+                       └─────────────────┬────────────────────────────┘
+                                         │  one Iceberg table set,
+                                         │  many readers
+                          ┌──────────────┼──────────────┐
+                          ▼              ▼              ▼              ▼
+                    ┌──────────┐  ┌──────────┐   ┌──────────┐   ┌──────────┐
+                    │Snowflake │  │  Athena  │   │Databricks│   │  Trino   │
+                    │on-Iceberg│  │          │   │          │   │          │
+                    └────┬─────┘  └────┬─────┘   └────┬─────┘   └────┬─────┘
+                         └─────────────┴───────┬──────┴──────────────┘
+                                               ▼
+                                       ┌────────────────┐
+                                       │  dbt           │
+                                       │  multi-engine  │
+                                       │  Snowflake +   │
+                                       │  Athena profiles│
+                                       │  stg/int/marts │
+                                       └───────┬────────┘
+                                               ▼
+                                       ┌────────────────┐
+                                       │  Next.js       │
+                                       │  /pulse,       │
+                                       │  /players,     │
+                                       │  /stack        │
+                                       │  (JSON snapshot│
+                                       │   or live query)│
+                                       └────────────────┘
 ```
+
+### Why MDLS
+
+One Iceberg table set, written once by the Fivetran connectors, readable
+by any engine with an Iceberg catalog client. No engine lock-in: the same
+mart definitions run on Snowflake-on-Iceberg or Athena (and could be
+pointed at Databricks or Trino without re-ingesting). The demo can be
+shown against whichever compute platform the audience cares about.
 
 - `fivetran/connectors/` — 6 Fivetran Connector SDK custom connectors (Python).
-- `dbt/` — 7 staging models, 2 intermediates, 3 marts (Snowflake). Key mart: `mart_rating_predictions` (player_id, predicted_delta, confidence, primary_driver).
-- App reads marts; for the local demo, `lib/pulse.ts` has mock data shaped exactly as the mart output.
+- `dbt/` — 7 staging models, 2 intermediates, 3 marts; profiles for
+  Snowflake-on-Iceberg (primary) and Athena (alternative), same model SQL
+  on both. Key mart: `mart_rating_predictions` (player_id, predicted_delta,
+  confidence, primary_driver).
+- App reads marts via JSON snapshots in `public/data/`; if an MDLS
+  destination + engine are configured, the same shape is served from a
+  live query.
 
 ## Stack
 
-- Next.js 14 (App Router) · TypeScript · Tailwind
-- localStorage for personal state (saved builds, redeemed codes, tier list overrides, scenario progress, favorite tips/moves/combos)
+- **Data layer** — Fivetran SDK + MDLS (S3 + Iceberg + Glue/Polaris catalog)
+- **Transformation** — dbt; Snowflake-on-Iceberg primary, Athena alternative,
+  same models on both
+- **Frontend** — Next.js 14 (App Router) · TypeScript · Tailwind, static export
+- **Deploy** — GitHub Pages via `.github/workflows/deploy.yml`
+- **Demo data** — pre-built JSON snapshots in `public/data/`; the same
+  pipeline runs live when MDLS + an engine are configured
+- localStorage for personal state (saved builds, redeemed codes, tier list
+  overrides, scenario progress, favorite tips/moves/combos)
 - No third-party UI libraries; primitives in `components/ui.tsx`
 - Scaffolded with Claude Code in 9 parallel agents

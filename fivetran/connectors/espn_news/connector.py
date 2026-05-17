@@ -2,12 +2,22 @@
 
 Pulls NBA articles and headlines from ESPN's public JSON endpoints.
 
+Destination: lands into MDLS (Fivetran Managed Data Lake Service) as Iceberg
+tables under the `bronze_espn_news` schema. Tables registered in the MDLS
+catalog (Glue or Polaris):
+    bronze_espn_news.articles
+    bronze_espn_news.headlines
+
+Any engine with an Iceberg catalog reader (Snowflake, Databricks, Athena,
+Trino) can query these tables directly off S3.
+
 Endpoints:
     https://site.api.espn.com/apis/site/v2/sports/basketball/nba/news?limit=50
     https://now.core.api.espn.com/v1/sports/news?limit=50&sport=basketball&league=nba
 
 No auth required. Articles include a `published` ISO timestamp used as the
-cursor.
+cursor. Destination config (S3 bucket, catalog) is set on the MDLS
+destination in the Fivetran UI, not in this connector.
 
 Tables:
     articles   — long-form ESPN articles with byline, body summary, links

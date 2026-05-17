@@ -1,3 +1,4 @@
 {
+  "_readme": "Source config only. Pair this connector with an MDLS destination (S3 + Iceberg + Glue/Polaris catalog) configured in the Fivetran UI; target schema bronze_balldontlie.",
   "api_key": "<YOUR_BALLDONTLIE_API_KEY>"
 }

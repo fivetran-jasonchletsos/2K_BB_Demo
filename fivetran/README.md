@@ -1,25 +1,90 @@
 # Fivetran Custom Connectors
 
 Six custom connectors built with the **Fivetran Connector SDK** that land data
-into Snowflake for the 2K Lab demo.
+into **MDLS** (Managed Data Lake Service) — Fivetran's managed S3 + Iceberg +
+catalog destination — for the 2K Lab demo.
+
+## Why MDLS
+
+MDLS is Fivetran's managed data lake destination. Each connector writes
+directly into an Iceberg-formatted S3 bucket, and Fivetran registers the
+tables in a managed catalog (AWS Glue, Snowflake Polaris, or AWS Lake
+Formation). Any engine with an Iceberg catalog reader — Snowflake,
+Databricks, Athena, Trino, BigQuery — can then read the **same** tables
+without copying data.
+
+- One copy of the data, in open Iceberg format on S3
+- Catalog is managed by Fivetran (Glue or Polaris)
+- Bronze schemas one-per-source, e.g. `bronze_balldontlie`, `bronze_nba_stats`
+- No vendor lock-in: swap the query engine without re-ingesting
+
+```
+                       ┌──────────────────────────────┐
+                       │   MDLS destination           │
+  Fivetran connectors  │   ──────────────────────     │   Query engines
+  ───────────────────  │   S3 (Parquet, Iceberg)      │   ──────────────
+  balldontlie          │   + managed catalog          │   Snowflake
+  nba_stats         ─▶ │     (Glue / Polaris)         │ ─▶ Databricks  ─▶ dbt ─▶ app
+  reddit_2k            │                              │   Athena
+  twokratings          │   bronze_<source>.<table>    │   Trino
+  espn_news            │                              │
+  locker_codes         └──────────────────────────────┘
+```
 
 ## Layout
 
 ```
-fivetran/connectors/
-├── balldontlie/    # NBA stats REST API (api.balldontlie.io)
-├── nba_stats/      # stats.nba.com (browser-headers, rate-limited)
-├── reddit_2k/      # r/NBA2k + r/NBA2k26 via OAuth
-├── twokratings/    # 2KRatings.com HTML scrape (community-curated)
-├── espn_news/      # ESPN public JSON endpoints
-└── locker_codes/   # 2K locker code aggregator
+fivetran/
+├── connectors/
+│   ├── balldontlie/    # NBA stats REST API (api.balldontlie.io)
+│   ├── nba_stats/      # stats.nba.com (browser-headers, rate-limited)
+│   ├── reddit_2k/      # r/NBA2k + r/NBA2k26 via OAuth
+│   ├── twokratings/    # 2KRatings.com HTML scrape (community-curated)
+│   ├── espn_news/      # ESPN public JSON endpoints
+│   └── locker_codes/   # 2K locker code aggregator
+└── destinations/
+    └── mdls.md         # MDLS destination configuration reference
 ```
 
-Each folder contains:
+Each connector folder contains:
 
 - `connector.py`     — SDK entrypoint defining `schema()` + `update()`
 - `requirements.txt` — pip deps (always includes `fivetran-connector-sdk`)
-- `configuration.json` *(balldontlie only)* — example config shape
+- `configuration.json` — example **source** config shape (api_key, etc.)
+
+The connector SDK is destination-agnostic. `op.upsert(...)` and
+`op.checkpoint(state)` are translated by Fivetran into Iceberg writes against
+the MDLS bucket; the connector code itself does not reference S3, Iceberg, or
+the catalog directly.
+
+## Destination configuration (one-time)
+
+Destination config lives in the Fivetran UI, **not** in `configuration.json`.
+The connector config only carries source credentials. To wire a connector to
+MDLS:
+
+1. In Fivetran, create a destination of type **Managed Data Lake (MDLS)**.
+2. Provide:
+   - S3 bucket (e.g. `fivetran-mdls-2k-lab`)
+   - AWS region (e.g. `us-east-1`)
+   - Catalog type (`glue` or `polaris`)
+   - IAM role ARN with read/write to the bucket
+3. When deploying each connector, select the MDLS destination and set the
+   target **schema** to `bronze_<source>` (e.g. `bronze_balldontlie`).
+
+See [`destinations/mdls.md`](destinations/mdls.md) for full destination
+configuration, bucket layout, and engine-side catalog wiring.
+
+## Target schemas and table mapping
+
+| Connector       | MDLS schema           | Tables landed                                                   |
+| --------------- | --------------------- | --------------------------------------------------------------- |
+| balldontlie     | `bronze_balldontlie`  | `teams`, `players`, `games`, `stats`, `season_averages`         |
+| nba_stats       | `bronze_nba_stats`    | `box_scores`, `play_by_play`, `lineups`, `shot_chart_detail`    |
+| reddit_2k       | `bronze_reddit_2k`    | `posts`, `comments`                                             |
+| twokratings     | `bronze_twokratings`  | `player_ratings`, `rating_history`                              |
+| espn_news       | `bronze_espn_news`    | `articles`, `headlines`                                         |
+| locker_codes    | `bronze_locker_codes` | `drops`                                                         |
 
 ## Local run
 
@@ -30,13 +95,16 @@ cd fivetran/connectors/balldontlie
 fivetran debug --configuration configuration.json
 ```
 
-`fivetran debug` will print upsert and checkpoint operations to stdout
-and emulate a real sync against your developer Snowflake destination.
+`fivetran debug` prints upsert and checkpoint operations to stdout and
+emulates a real sync. To exercise an end-to-end Iceberg write, point the
+debug run at a developer MDLS destination configured in your Fivetran
+account.
 
 ## Deploy
 
 Use `fivetran deploy` from each connector directory to publish the connector
-to your Fivetran account. State (cursors) is persisted between syncs by
+to your Fivetran account, selecting the MDLS destination and the appropriate
+`bronze_<source>` schema. State (cursors) is persisted between syncs by
 Fivetran; do not put cursor values in `configuration.json`.
 
 ## Schedules
@@ -61,3 +129,6 @@ Fivetran; do not put cursor values in `configuration.json`.
 - **locker_codes** consumes from a community aggregator JSON endpoint; the
   endpoint URL is configurable so the connector can be repointed without
   re-deploying.
+- All six connectors land into the same MDLS destination; downstream dbt
+  models read the Iceberg tables via whichever query engine the project
+  selects.

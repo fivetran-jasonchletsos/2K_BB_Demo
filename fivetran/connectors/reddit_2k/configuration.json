@@ -1,0 +1,6 @@
+{
+  "_readme": "Source config only. Pair this connector with an MDLS destination (S3 + Iceberg + Glue/Polaris catalog) configured in the Fivetran UI; target schema bronze_reddit_2k.",
+  "client_id": "<REDDIT_SCRIPT_APP_CLIENT_ID>",
+  "client_secret": "<REDDIT_SCRIPT_APP_CLIENT_SECRET>",
+  "refresh_token": "<REDDIT_REFRESH_TOKEN>"
+}

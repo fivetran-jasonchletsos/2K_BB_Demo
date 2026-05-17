@@ -1,14 +1,32 @@
+# ============================================================
+# Source definitions for nba_2k_lab.
+#
+# MDLS (Managed Data Lake Service) landing pattern:
+#
+#   Fivetran custom connectors -> S3 (Parquet/Iceberg) ->
+#   shared catalog (AWS Glue) -> bronze_<source> schemas.
+#
+# These bronze schemas are catalog-registered Iceberg tables.
+# The SAME bronze tables are queryable by every engine bound
+# to the catalog (Snowflake-on-Iceberg, Athena, Trino, Spark,
+# Flink, ...). dbt only cares about (schema, table) names;
+# engine selection lives in profiles.yml.
+#
+# Each source declares `_fivetran_synced` as the freshness
+# field, so `dbt source freshness` checks the actual landing
+# cadence regardless of compute engine.
+# ============================================================
+
 version: 2
 
 sources:
   - name: nba_balldontlie
-    description: "balldontlie.io REST API, landed by the balldontlie custom Fivetran connector."
-    database: NBA_2K_LAB
-    schema: nba_balldontlie
+    description: "balldontlie.io REST API, landed by the balldontlie custom Fivetran connector into MDLS as Iceberg."
+    schema: bronze_balldontlie
     loaded_at_field: _fivetran_synced
     freshness:
-      warn_after:   { count: 30, period: minute }
-      error_after:  { count: 120, period: minute }
+      warn_after:  { count: 30,  period: minute }
+      error_after: { count: 120, period: minute }
     tables:
       - name: teams
         columns:
@@ -29,10 +47,12 @@ sources:
       - name: season_averages
 
   - name: nba_stats
-    description: "stats.nba.com endpoints landed by the nba_stats custom Fivetran connector."
-    database: NBA_2K_LAB
-    schema: nba_stats
+    description: "stats.nba.com endpoints landed by the nba_stats custom Fivetran connector into MDLS as Iceberg."
+    schema: bronze_nba_stats
     loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:  { count: 60,  period: minute }
+      error_after: { count: 240, period: minute }
     tables:
       - name: box_scores
       - name: play_by_play
@@ -40,12 +60,11 @@ sources:
       - name: shot_chart_detail
 
   - name: reddit_2k
-    description: "r/NBA2k + r/NBA2k26 posts and comments landed via OAuth."
-    database: NBA_2K_LAB
-    schema: reddit_2k
+    description: "r/NBA2k + r/NBA2k26 posts and comments landed via OAuth into MDLS as Iceberg."
+    schema: bronze_reddit_2k
     loaded_at_field: _fivetran_synced
     freshness:
-      warn_after:  { count: 30, period: minute }
+      warn_after:  { count: 30,  period: minute }
       error_after: { count: 180, period: minute }
     tables:
       - name: posts
@@ -58,10 +77,12 @@ sources:
             tests: [unique, not_null]
 
   - name: espn_news
-    description: "ESPN public JSON endpoints for NBA news."
-    database: NBA_2K_LAB
-    schema: espn_news
+    description: "ESPN public JSON endpoints for NBA news, landed into MDLS as Iceberg."
+    schema: bronze_espn_news
     loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:  { count: 60,  period: minute }
+      error_after: { count: 240, period: minute }
     tables:
       - name: articles
         columns:
@@ -70,9 +91,8 @@ sources:
       - name: headlines
 
   - name: twokratings
-    description: "Community-curated 2KRatings.com ratings (HTML scrape)."
-    database: NBA_2K_LAB
-    schema: twokratings
+    description: "Community-curated 2KRatings.com ratings (HTML scrape), landed into MDLS as Iceberg."
+    schema: bronze_twokratings
     loaded_at_field: _fivetran_synced
     freshness:
       warn_after:  { count: 36, period: hour }
@@ -85,10 +105,12 @@ sources:
       - name: rating_history
 
   - name: locker_codes
-    description: "Active 2K locker codes from community aggregator."
-    database: NBA_2K_LAB
-    schema: locker_codes
+    description: "Active 2K locker codes from community aggregator, landed into MDLS as Iceberg."
+    schema: bronze_locker_codes
     loaded_at_field: _fivetran_synced
+    freshness:
+      warn_after:  { count: 6,  period: hour }
+      error_after: { count: 24, period: hour }
     tables:
       - name: drops
         columns:
